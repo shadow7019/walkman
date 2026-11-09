@@ -16,7 +16,6 @@ export function Cover({ src, alt, className, rounded = 'rounded-md' }: {
   return (
     <div className={cn('relative overflow-hidden bg-muted shrink-0', rounded, className)}>
       {show ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={src!}
           alt={alt}

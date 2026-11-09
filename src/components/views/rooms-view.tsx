@@ -56,6 +56,13 @@ export function RoomsView() {
   const isHost = !!room && myId === room.hostId
   const canControl = !room?.hostControls || isHost
 
+  const leaveCleanup = useCallback(() => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    setRoom(null)
+    setPhase('idle')
+    player.internal.setPlaying(false)
+  }, [player])
+
   const connect = useCallback((): Promise<Socket> => {
     return new Promise((resolve, reject) => {
       if (socketRef.current?.connected) { resolve(socketRef.current); return }
@@ -82,14 +89,7 @@ export function RoomsView() {
         toast(e.message)
       })
     })
-  }, [toast])
-
-  const leaveCleanup = useCallback(() => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
-    setRoom(null)
-    setPhase('idle')
-    player.internal.setPlaying(false)
-  }, [player])
+  }, [toast, leaveCleanup])
 
   useEffect(() => {
     return () => {

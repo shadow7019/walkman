@@ -165,22 +165,30 @@ function BackButton() {
 }
 
 export function GenreView({ genre }: { genre: string }) {
-  const [tracks, setTracks] = useState<Track[] | null>(null)
-  const [extending, setExtending] = useState(false)
+  const [data, setData] = useState<{ genre: string; tracks: Track[]; extending: boolean } | null>(null)
 
-  const load = useCallback(async () => {
-    const r = await api.tracks({ genre, limit: 100, sort: 'plays' }).catch(() => ({ tracks: [] as Track[] }))
-    setTracks(r.tracks)
-    if (r.tracks.length < 10) {
-      setExtending(true)
-      await api.search(genre).catch(() => {})
-      const r2 = await api.tracks({ genre, limit: 100, sort: 'plays' }).catch(() => ({ tracks: [] as Track[] }))
-      setTracks(r2.tracks)
-      setExtending(false)
-    }
+  // derive per-genre state so switching genres never shows stale tracks
+  const tracks = data && data.genre === genre ? data.tracks : null
+  const extending = !!data && data.genre === genre && data.extending
+
+  useEffect(() => {
+    let alive = true
+    api.tracks({ genre, limit: 100, sort: 'plays' })
+      .catch(() => ({ tracks: [] as Track[] }))
+      .then(async (r) => {
+        if (!alive) return
+        setData({ genre, tracks: r.tracks, extending: false })
+        if (r.tracks.length < 10) {
+          // too few locally — extend the catalog from industry sources, then refetch
+          setData({ genre, tracks: r.tracks, extending: true })
+          await api.search(genre).catch(() => {})
+          const r2 = await api.tracks({ genre, limit: 100, sort: 'plays' }).catch(() => ({ tracks: [] as Track[] }))
+          if (!alive) return
+          setData({ genre, tracks: r2.tracks, extending: false })
+        }
+      })
+    return () => { alive = false }
   }, [genre])
-
-  useEffect(() => { load() }, [load])
 
   if (!tracks) return <div className="py-8"><SkeletonRow /></div>
 

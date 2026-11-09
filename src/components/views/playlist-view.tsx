@@ -58,7 +58,23 @@ export function PlaylistView({ id }: { id: string }) {
     }
   }, [id, navigate, toast])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    let alive = true
+    api.playlist(id)
+      .then((r) => {
+        if (!alive) return
+        setPlaylist(r.playlist)
+        setTracks(r.tracks)
+        setName(r.playlist.name)
+        setDescription(r.playlist.description)
+      })
+      .catch(() => {
+        if (!alive) return
+        toast('Playlist not found')
+        navigate({ name: 'home' })
+      })
+    return () => { alive = false }
+  }, [id, toast, navigate])
 
   const removeTrack = async (trackId: string) => {
     await api.removeFromPlaylist(id, trackId).catch(() => {})

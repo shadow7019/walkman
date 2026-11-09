@@ -133,21 +133,22 @@ function QueueRow({ t, index, active, isPlaying, onPlay, onRemove, draggableHand
 function LyricsPanel() {
   const { queue, queueIndex, position, seek } = usePlayer()
   const track = queue[queueIndex]
-  const [data, setData] = useState<LyricsResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState<{ id: string; data: LyricsResult | null } | null>(null)
   const activeLineRef = useRef<HTMLButtonElement>(null)
 
+  // derive per-track state (no sync setState in effects)
+  const data = track && loaded?.id === track.id ? loaded.data : null
+  const loading = !!track && loaded?.id !== track.id
+
   useEffect(() => {
-    if (!track) { setData(null); return }
+    if (!track) return
+    const { id, title, artist, durationMs } = track
     let cancel = false
-    setLoading(true)
-    setData(null)
-    api.lyrics(track.title, track.artist, track.durationMs / 1000)
-      .then((r) => { if (!cancel) setData(r) })
-      .catch(() => {})
-      .finally(() => { if (!cancel) setLoading(false) })
+    api.lyrics(title, artist, durationMs / 1000)
+      .then((r) => { if (!cancel) setLoaded({ id, data: r }) })
+      .catch(() => { if (!cancel) setLoaded({ id, data: null }) })
     return () => { cancel = true }
-  }, [track?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [track])
 
   const activeIdx = useMemo(() => {
     if (!data?.synced) return -1

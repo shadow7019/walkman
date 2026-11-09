@@ -38,7 +38,8 @@ export function AddToPlaylistDialog() {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { if (addTrackDialogFor) setName('') }, [addTrackDialogFor])
+  // reset the input whenever the dialog closes (no effect needed)
+  const close = () => { setName(''); closeAddToPlaylist() }
 
   const create = async () => {
     if (!addTrackDialogFor || !name.trim()) return
@@ -50,11 +51,11 @@ export function AddToPlaylistDialog() {
       await refreshPlaylists()
     }
     setBusy(false)
-    closeAddToPlaylist()
+    close()
   }
 
   return (
-    <Dialog open={!!addTrackDialogFor} onOpenChange={(o) => !o && closeAddToPlaylist()}>
+    <Dialog open={!!addTrackDialogFor} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><ListPlus className="h-4 w-4" aria-hidden /> Add to playlist</DialogTitle>
@@ -71,7 +72,7 @@ export function AddToPlaylistDialog() {
                 if (res) toast(`Added to ${p.name}`)
                 else toast(`Already in ${p.name}`)
                 refreshPlaylists()
-                closeAddToPlaylist()
+                close()
               }}
             >
               {p.name}
@@ -156,7 +157,7 @@ export function SleepTimerBadge() {
   const sleepAt = usePlayer((s) => s.sleepAt)
   const [left, setLeft] = useState(0)
   useEffect(() => {
-    if (!sleepAt) { setLeft(0); return }
+    if (!sleepAt) return
     const iv = setInterval(() => setLeft(Math.max(0, Math.round((sleepAt - Date.now()) / 1000))), 500)
     return () => clearInterval(iv)
   }, [sleepAt])

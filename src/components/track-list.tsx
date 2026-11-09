@@ -2,7 +2,7 @@
 
 // Shared track table used by every view: play, like, queue, playlist-add, download.
 import { useMemo } from 'react'
-import { Pause, Play, Heart, MoreHorizontal, ListPlus, ListStart, Download, Radio, ListMusic, Disc3 } from 'lucide-react'
+import { Pause, Play, Heart, MoreHorizontal, ListPlus, ListStart, Download, Radio, ListMusic, Disc3, X } from 'lucide-react'
 import { usePlayer } from '@/stores/player'
 import { useLibrary } from '@/stores/library'
 import { useUI } from '@/stores/ui'

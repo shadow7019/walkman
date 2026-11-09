@@ -21,10 +21,11 @@ export function TopBar() {
 
   // live suggestions (debounced, local-first)
   useEffect(() => {
-    if (!searchQuery.trim() || !focused) { setSuggest([]); return }
+    const q = searchQuery.trim()
+    if (!q || !focused) return
     const t = setTimeout(async () => {
       try {
-        const { tracks } = await api.tracks({ q: searchQuery.trim(), limit: 6, sort: 'plays' })
+        const { tracks } = await api.tracks({ q, limit: 6, sort: 'plays' })
         setSuggest(tracks)
       } catch { setSuggest([]) }
     }, 180)

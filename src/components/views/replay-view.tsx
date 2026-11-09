@@ -27,12 +27,14 @@ export function ReplayView() {
   const { navigate } = useUI()
   const [period, setPeriod] = useState<string>('month')
   const [stats, setStats] = useState<ReplayStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loadedPeriod, setLoadedPeriod] = useState<string | null>(null)
+  const loading = loadedPeriod !== period
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
-    api.stats(period).then((s) => { if (alive) { setStats(s); setLoading(false) } }).catch(() => { if (alive) setLoading(false) })
+    api.stats(period)
+      .then((s) => { if (alive) { setStats(s); setLoadedPeriod(period) } })
+      .catch(() => { if (alive) setLoadedPeriod(period) })
     return () => { alive = false }
   }, [period])
 

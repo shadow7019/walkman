@@ -1,150 +1,73 @@
-import { NextRequest, NextResponse } from "next/server";
-import { scoreMatch } from "@/lib/fuzzy";
-import { db } from "@/lib/db";
-import { trackDTO } from "@/lib/serialize";
-import { parseImportText } from "@/lib/import-parser";
-import { searchAudius, importAudiusTrack, audiusToDTO, type AudiusTrack } from "@/lib/audius";
-import type { ImportEntry, ImportPreview, Track } from "@/lib/types";
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import {
+  parseSpotifyUrl, parseTextList, parseCSV,
+  fetchSpotifyPlaylist, matchAll, type ParsedSong,
+} from '@/lib/import'
 
-const MAX_TEXT_LENGTH = 100_000;
-const SUGGESTION_THRESHOLD = 0.15;
-const MATCH_THRESHOLD = 0.55;
-const SUGGESTION_LIMIT = 5;
-const LIVE_MATCH_THRESHOLD = 0.5; // slightly looser for network candidates
-const MAX_LIVE_LOOKUPS = 40; // bound network work per request
-const LIVE_CONCURRENCY = 6;
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
-type JsonObject = Record<string, unknown>;
-
-function asObject(v: unknown): JsonObject | null {
-  if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as JsonObject;
-  return null;
-}
-
-async function readJsonBody(req: NextRequest): Promise<{ ok: true; body: unknown } | { ok: false }> {
-  try {
-    return { ok: true, body: await req.json() };
-  } catch {
-    return { ok: false };
-  }
-}
-
-/** Find the best Audius network candidate for a parsed entry. */
-async function bestAudiusCandidate(
-  title: string,
-  artist: string | undefined,
-  query: string
-): Promise<{ track: AudiusTrack; score: number } | null> {
-  const candidates = await searchAudius(query, 10);
-  let best: { track: AudiusTrack; score: number } | null = null;
-  for (const candidate of candidates) {
-    const dto = audiusToDTO(candidate);
-    const forward = scoreMatch(title, artist, dto);
-    const swapped = artist ? scoreMatch(artist, title, dto) : -1;
-    const score = Math.max(forward, swapped);
-    if (!best || score > best.score) best = { track: candidate, score };
-  }
-  return best && best.score >= LIVE_MATCH_THRESHOLD ? best : null;
-}
-
-// POST /api/import — parse pasted playlist text, match against the catalog, and
-// pull unmatched songs from the Audius network so every entry becomes playable.
+// POST /api/import
+// { mode: 'spotify', url } | { mode: 'text', text, order? } | { mode: 'csv', text } | { mode: 'auto', text }
 export async function POST(req: NextRequest) {
-  const parsed = await readJsonBody(req);
-  if (!parsed.ok) {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-  const body = asObject(parsed.body);
-  if (!body) {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-  }
-  const text = body.text;
-  if (typeof text !== "string" || text.trim().length === 0) {
-    return NextResponse.json({ error: "text is required and must be a non-empty string" }, { status: 400 });
-  }
-  if (text.length > MAX_TEXT_LENGTH) {
-    return NextResponse.json({ error: "text is too large" }, { status: 400 });
-  }
-  const enrich = body.enrich !== false;
+  const body = await req.json().catch(() => ({}))
+  const mode: string = body.mode ?? 'auto'
+  let songs: ParsedSong[] = []
+  let source = 'Text list'
+  let name = 'Imported Playlist'
 
-  const { format, entries, nameHint } = parseImportText(text);
-  const catalog = (await db.track.findMany({ orderBy: [{ trackNo: "asc" }] })).map(trackDTO);
-
-  const results: ImportEntry[] = entries.map((entry) => {
-    const artist = entry.artist;
-    const hasArtist = artist !== undefined && artist.trim().length > 0;
-
-    const forwardScores = catalog.map((track) => scoreMatch(entry.title, artist, track));
-    const swappedScores = hasArtist
-      ? catalog.map((track) => scoreMatch(artist ?? "", entry.title, track))
-      : catalog.map(() => -1);
-
-    const forwardBest = catalog.length > 0 ? Math.max(...forwardScores) : 0;
-    const swappedBest = hasArtist && catalog.length > 0 ? Math.max(...swappedScores) : -1;
-
-    const useSwapped = swappedBest > forwardBest;
-    const scores = useSwapped ? swappedScores : forwardScores;
-    const best = useSwapped ? swappedBest : forwardBest;
-
-    const ranked = catalog
-      .map((track, index) => ({ track, score: scores[index] }))
-      .sort((a, b) => b.score - a.score);
-    const suggestions = ranked
-      .filter((r) => r.score > SUGGESTION_THRESHOLD)
-      .slice(0, SUGGESTION_LIMIT)
-      .map((r) => r.track);
-
-    const bestMatch: Track | null =
-      ranked.length > 0 && ranked[0].score >= MATCH_THRESHOLD ? ranked[0].track : null;
-
-    return {
-      raw: entry.raw,
-      title: entry.title,
-      artist: entry.artist,
-      bestMatch,
-      confidence: Math.round(best * 100) / 100,
-      suggestions,
-      swapped: useSwapped,
-      source: bestMatch ? ("catalog" as const) : undefined,
-    };
-  });
-
-  // Live enrichment: entries with no confident local match get searched on Audius.
-  if (enrich) {
-    const unmatched = results.filter((e) => e.bestMatch === null).slice(0, MAX_LIVE_LOOKUPS);
-    let cursor = 0;
-
-    async function worker(): Promise<void> {
-      while (cursor < unmatched.length) {
-        const entry = unmatched[cursor++];
-        const query = entry.artist ? `${entry.artist} ${entry.title}` : entry.title;
-        try {
-          const best = await bestAudiusCandidate(entry.title, entry.artist, query);
-          if (best) {
-            const saved = await importAudiusTrack(best.track);
-            if (saved) {
-              entry.bestMatch = trackDTO(saved);
-              entry.confidence = Math.round(best.score * 100) / 100;
-              entry.source = "audius";
-            }
-          }
-        } catch (err) {
-          console.error("[api/import] live match failed:", err instanceof Error ? err.message : err);
-        }
-      }
+  try {
+    if (mode === 'spotify' || (mode === 'auto' && parseSpotifyUrl(body.url ?? body.text ?? ''))) {
+      const id = parseSpotifyUrl(body.url ?? body.text ?? '')
+      if (!id) return NextResponse.json({ error: 'Could not find a Spotify playlist ID in that link' }, { status: 400 })
+      const fetched = await fetchSpotifyPlaylist(id)
+      songs = fetched.songs
+      name = fetched.name || 'Imported Spotify Playlist'
+      source = 'Spotify'
+    } else if (mode === 'csv' || (mode === 'auto' && /^\s*(track name|title|song)/i.test(body.text ?? ''))) {
+      songs = parseCSV(body.text ?? '')
+      source = 'CSV'
+      name = body.name ?? 'Imported CSV Playlist'
+    } else {
+      const text = (body.text ?? '').toString()
+      if (!text.trim()) return NextResponse.json({ error: 'Nothing to import' }, { status: 400 })
+      songs = parseTextList(text, body.order === 'title-first' ? 'title-first' : 'artist-first')
+      source = 'Text list'
+      name = body.name ?? 'Imported Playlist'
     }
-
-    await Promise.all(Array.from({ length: Math.min(LIVE_CONCURRENCY, unmatched.length) }, () => worker()));
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to read playlist' }, { status: 400 })
   }
 
-  const matched = results.filter((e) => e.bestMatch !== null).length;
-  const fromNetwork = results.filter((e) => e.source === "audius").length;
-  const payload: ImportPreview = {
-    format,
-    playlistNameHint: nameHint,
-    entries: results,
-    stats: { total: results.length, matched },
-  };
-  void fromNetwork;
-  return NextResponse.json(payload);
+  // cap huge playlists for the matching pass
+  const cap = 150
+  const capped = songs.slice(0, cap)
+  const skipped = Math.max(0, songs.length - cap)
+  if (!capped.length) return NextResponse.json({ error: 'No songs found in that input' }, { status: 400 })
+
+  const matches = await matchAll(capped)
+  const matched = matches.filter((m) => m.trackId)
+  const notFound = matches.filter((m) => !m.trackId).map((m) => m.song.originalLine || `${m.song.artist} - ${m.song.title}`)
+
+  const playlist = await db.playlist.create({
+    data: {
+      name: String(name).slice(0, 80),
+      description: `Imported from ${source} · ${matched.length}/${capped.length} matched`,
+      importedFrom: source,
+      tracks: {
+        create: matched.map((m, i) => ({ trackId: m.trackId!, position: i })),
+      },
+    },
+  })
+
+  return NextResponse.json({
+    ok: true,
+    playlistId: playlist.id,
+    name: playlist.name,
+    total: capped.length,
+    matched: matched.length,
+    notFound,
+    skippedOverflow: skipped,
+  })
 }

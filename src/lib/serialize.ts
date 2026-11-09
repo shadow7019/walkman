@@ -1,57 +1,39 @@
-import type { Playlist, PlaylistTrack, Track as TrackRow } from "@prisma/client";
-import type { PlaylistDetail, PlaylistSummary, Track } from "./types";
-
-export function trackDTO(t: TrackRow): Track {
-  return {
-    id: t.id,
-    title: t.title,
-    artist: t.artist,
-    album: t.album,
-    genre: t.genre,
-    year: t.year,
-    durationSec: t.durationSec,
-    cover: t.cover,
-    audioFile: t.audioFile,
-    qualityTier: t.qualityTier,
-    bitrateKbps: t.bitrateKbps,
-    source: (t.source === "audius" ? "audius" : "local") as Track["source"],
-    playCount: t.playCount,
-    favoriteCount: t.favoriteCount,
-  };
+// Shared track serializer — DB row → client shape
+export interface TrackDTO {
+  id: string
+  title: string
+  artist: string
+  album: string
+  genre: string
+  rawGenre: string
+  mood: string
+  year: number
+  durationMs: number
+  cover: string
+  source: string
+  sourceId: string
+  hasFull: boolean
+  qualityTier: string
+  bitrateKbps: number
+  explicit: boolean
+  playCount: number
+  favoriteCount: number
+  permalink: string
 }
 
-export type PlaylistWithTracks = Playlist & { tracks: (PlaylistTrack & { track: TrackRow })[] };
-
-export function orderedTracks(p: PlaylistWithTracks): (PlaylistTrack & { track: TrackRow })[] {
-  return [...p.tracks].sort((a, b) => a.position - b.position);
+type DbTrack = {
+  id: string; title: string; artist: string; album: string; genre: string; rawGenre: string
+  mood: string; year: number; durationMs: number; cover: string; source: string; sourceId: string
+  hasFull: boolean; qualityTier: string; bitrateKbps: number; explicit: boolean
+  playCount: number; favoriteCount: number; permalink: string
 }
 
-export function playlistSummary(p: PlaylistWithTracks): PlaylistSummary {
-  const ordered = orderedTracks(p);
+export function trackDTO(t: DbTrack): TrackDTO {
   return {
-    id: p.id,
-    name: p.name,
-    description: p.description,
-    gradient: p.gradient,
-    importedFrom: p.importedFrom,
-    trackCount: ordered.length,
-    covers: ordered.slice(0, 4).map((pt) => pt.track.cover),
-  };
-}
-
-export function playlistDetail(p: PlaylistWithTracks): PlaylistDetail {
-  const ordered = orderedTracks(p);
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description,
-    gradient: p.gradient,
-    importedFrom: p.importedFrom,
-    createdAt: p.createdAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
-    trackCount: ordered.length,
-    covers: ordered.slice(0, 4).map((pt) => pt.track.cover),
-    totalDurationSec: ordered.reduce((acc, pt) => acc + pt.track.durationSec, 0),
-    tracks: ordered.map((pt) => trackDTO(pt.track)),
-  };
+    id: t.id, title: t.title, artist: t.artist, album: t.album, genre: t.genre,
+    rawGenre: t.rawGenre, mood: t.mood, year: t.year, durationMs: t.durationMs,
+    cover: t.cover, source: t.source, sourceId: t.sourceId, hasFull: t.hasFull,
+    qualityTier: t.qualityTier, bitrateKbps: t.bitrateKbps, explicit: t.explicit,
+    playCount: t.playCount, favoriteCount: t.favoriteCount, permalink: t.permalink,
+  }
 }

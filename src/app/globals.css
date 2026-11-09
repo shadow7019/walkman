@@ -175,3 +175,34 @@
 .player-slider:focus-within [data-slot="slider-thumb"] {
   opacity: 1;
 }
+
+/* ---- Walkman: eq bars ---- */
+.eq-bars span {
+  animation: eq 900ms ease-in-out infinite alternate;
+}
+@keyframes eq {
+  0% { height: 20%; }
+  100% { height: 100%; }
+}
+
+/* ---- Walkman: custom scrollbar ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.15);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.3);
+  background-clip: content-box;
+}
+
+/* emerald slider accents */
+[data-slot="slider-range"] { background: #34d399; }
+[data-slot="slider-thumb"] { border-color: #ffffff; background: #ffffff; }

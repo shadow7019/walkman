@@ -1,74 +1,55 @@
-import { NextRequest, NextResponse } from "next/server";
-import { scoreSearchQuery } from "@/lib/fuzzy";
-import { db } from "@/lib/db";
-import { trackDTO } from "@/lib/serialize";
-import { ensureFreshCatalog } from "@/lib/audius";
-import type { Track } from "@/lib/types";
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { trackDTO } from '@/lib/serialize'
 
-// GET /api/tracks?q=&genre=&sort=catalog|trending|newest&limit=&ids=id1,id2
+export const dynamic = 'force-dynamic'
+
+// GET /api/tracks?genre=&mood=&source=&hasFull=&q=&sort=&limit=&offset=&ids=
 export async function GET(req: NextRequest) {
-  const { searchParams } = req.nextUrl;
-  const idsParam = searchParams.get("ids");
-  const genreParam = searchParams.get("genre");
-  const qParam = searchParams.get("q") ?? "";
-  const sort = searchParams.get("sort") ?? "catalog";
-  const limitParam = Number.parseInt(searchParams.get("limit") ?? "", 10);
-  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : null;
+  const sp = req.nextUrl.searchParams
+  const genre = sp.get('genre')
+  const mood = sp.get('mood')
+  const source = sp.get('source')
+  const hasFull = sp.get('hasFull')
+  const q = sp.get('q')
+  const ids = sp.get('ids')
+  const sort = sp.get('sort') ?? 'recent' // recent | plays | title | artist | random
+  const limit = Math.min(parseInt(sp.get('limit') ?? '50', 10), 200)
+  const offset = parseInt(sp.get('offset') ?? '0', 10)
 
-  // auto-add new songs: deep-sweep when the catalog is small, refresh stale charts in background
-  void ensureFreshCatalog().catch(() => undefined);
-
-  // ids mode: return the requested tracks re-ordered to match the ids order
-  if (idsParam !== null) {
-    const ids = idsParam
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    const rows = await db.track.findMany({ where: { id: { in: ids } } });
-    const byId = new Map(rows.map((row) => [row.id, row]));
-    const tracks = ids.flatMap((id) => {
-      const row = byId.get(id);
-      return row ? [trackDTO(row)] : [];
-    });
-    return NextResponse.json({ tracks });
-  }
-
-  const orderBy =
-    sort === "trending"
-      ? [{ playCount: "desc" as const }, { favoriteCount: "desc" as const }, { trackNo: "asc" as const }]
-      : sort === "newest"
-        ? [{ createdAt: "desc" as const }, { trackNo: "asc" as const }]
-        : [{ trackNo: "asc" as const }];
-
-  const q = qParam.trim();
-  const genreExact = genreParam?.trim() ?? "";
-
-  // free-text search needs the whole candidate pool; otherwise filter + limit in SQL
-  const where = !q && genreExact ? { genre: genreExact } : undefined;
-  const take = !q && limit !== null ? limit : undefined;
-  let rows = await db.track.findMany({ where, orderBy, take });
-
-  // safety net: exact genre match found nothing → fall back to case-insensitive scan
-  if (!q && genreExact && rows.length === 0) {
-    rows = await db.track.findMany({ orderBy });
-    rows = rows.filter((t) => t.genre.toLowerCase() === genreExact.toLowerCase());
-    if (limit !== null) rows = rows.slice(0, limit);
-  }
-
-  let tracks: Track[];
-
+  const where: Record<string, unknown> = {}
+  if (genre) where.genre = { in: genre.split(',') }
+  if (mood) where.mood = mood
+  if (source) where.source = source
+  if (hasFull === '1') where.hasFull = true
   if (q) {
-    // fuzzy free-text search — score raw rows, map only the winners to DTOs
-    tracks = rows
-      .filter((t) => !genreExact || t.genre.toLowerCase() === genreExact.toLowerCase())
-      .map((t) => ({ row: t, score: scoreSearchQuery(q, t) }))
-      .filter((entry) => entry.score > 0.15)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 50)
-      .map((entry) => trackDTO(entry.row));
-  } else {
-    tracks = rows.map(trackDTO);
+    where.OR = [
+      { title: { contains: q } },
+      { artist: { contains: q } },
+      { album: { contains: q } },
+    ]
+  }
+  if (ids) {
+    const idList = ids.split(',').filter(Boolean)
+    const rows = await db.track.findMany({ where: { id: { in: idList } } })
+    // preserve caller's order
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    return NextResponse.json({ tracks: idList.map((i) => byId.get(i)).filter(Boolean).map((t) => trackDTO(t!)) })
   }
 
-  return NextResponse.json({ tracks });
+  let orderBy: Record<string, 'asc' | 'desc'> = { createdAt: 'desc' }
+  if (sort === 'plays') orderBy = { playCount: 'desc' }
+  if (sort === 'title') orderBy = { title: 'asc' }
+  if (sort === 'artist') orderBy = { artist: 'asc' }
+
+  const [rows, total] = await Promise.all([
+    sort === 'random'
+      ? db.track.findMany({ where, take: limit })
+      : db.track.findMany({ where, orderBy, take: limit, skip: offset }),
+    db.track.count({ where }),
+  ])
+
+  let tracks = rows.map(trackDTO)
+  if (sort === 'random') tracks = tracks.sort(() => Math.random() - 0.5)
+  return NextResponse.json({ tracks, total })
 }

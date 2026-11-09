@@ -7,47 +7,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Walkman music catalog
+// Walkman music catalog — industry tracks from multiple public sources
 model Track {
   id          String   @id @default(cuid())
   title       String
   artist      String
-  album       String
-  genre       String
+  album       String   @default("")
+  genre       String   @default("Pop") // canonical genre
+  rawGenre    String   @default("") // source's own genre label
+  mood        String   @default("") // e.g. "Energetic", "Peaceful"
   year        Int      @default(2024)
-  durationSec Int
-  cover       String // local path under /public (e.g. /covers/x.jpg) OR remote artwork URL
-  audioFile   String   @default("") // local path under /public, empty for remote-streamed tracks
-  qualityTier String   @default("HQ") // HQ | HI-FI | STANDARD
-  bitrateKbps Int      @default(320)
-  trackNo     Int      @default(0) // catalog order
+  durationMs  Int      @default(0)
+  cover       String   @default("") // remote artwork URL
+  source      String   @default("itunes") // audius | itunes | local
+  sourceId    String   @default("") // external id at source
+  streamUrl   String   @default("") // full-length stream endpoint (audius)
+  previewUrl  String   @default("") // 30s high-quality preview (itunes)
+  hasFull     Boolean  @default(false) // true = full-length stream available
+  qualityTier String   @default("HQ") // HI-FI (320) | HQ (256) | STANDARD
+  bitrateKbps Int      @default(256)
+  explicit    Boolean  @default(false)
+  playCount   Int      @default(0)
+  favoriteCount Int    @default(0)
+  permalink   String   @default("")
+  releaseDate DateTime?
+  trackNo     Int      @default(0)
   createdAt   DateTime @default(now())
-
-  // Remote catalog (Audius network)
-  source        String    @default("local") // local | audius
-  audiusId      String?   @unique
-  releaseDate   DateTime?
-  playCount     Int       @default(0)
-  favoriteCount Int       @default(0)
-  permalink     String?
 
   playlistTracks PlaylistTrack[]
   likes          Like[]
   history        PlayHistory[]
 
+  @@unique([source, sourceId])
   @@index([artist])
   @@index([album])
   @@index([genre])
+  @@index([mood])
   @@index([playCount])
   @@index([createdAt])
+  @@index([title])
 }
 
 model Playlist {
   id           String   @id @default(cuid())
   name         String
-  description  String?
-  gradient     String   @default("from-amber-500 to-orange-700")
-  importedFrom String? // e.g. "Spotify JSON", "Apple Music text", "CSV"
+  description  String   @default("")
+  gradient     String   @default("from-emerald-500 to-teal-700")
+  importedFrom String   @default("") // "Spotify", "Text list", "CSV", "m3u8"
+  isSystem     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -81,6 +88,9 @@ model Like {
 model PlayHistory {
   id       String   @id @default(cuid())
   trackId  String
+  msPlayed Int      @default(0)
+  completed Boolean @default(false)
+  hour     Int      @default(0) // hour of day 0-23
   playedAt DateTime @default(now())
 
   track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
@@ -89,13 +99,15 @@ model PlayHistory {
   @@index([trackId])
 }
 
-// Records each catalog sync run (auto-added new songs)
+// Records each catalog sync run (auto-add new songs)
 model SyncLog {
   id       String   @id @default(cuid())
-  scope    String // genre name or "all"
+  source   String // audius | itunes
+  scope    String // genre name or "all" or "trending"
   fetched  Int
   added    Int
   updated  Int
+  detail   String   @default("")
   syncedAt DateTime @default(now())
 
   @@index([syncedAt])

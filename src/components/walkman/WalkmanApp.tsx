@@ -16,6 +16,7 @@ import { HomeView } from "./HomeView";
 import { SearchView } from "./SearchView";
 import { LibraryView } from "./LibraryView";
 import { PlaylistView } from "./PlaylistView";
+import { GenreView } from "./GenreView";
 
 export function WalkmanApp() {
   const [queryClient] = useState(
@@ -55,6 +56,7 @@ export function WalkmanApp() {
               {view.type === "library" && <LibraryView />}
               {view.type === "liked" && <PlaylistView />}
               {view.type === "playlist" && <PlaylistView playlistId={view.id} />}
+              {view.type === "genre" && <GenreView name={view.name} />}
             </div>
           </main>
         </div>

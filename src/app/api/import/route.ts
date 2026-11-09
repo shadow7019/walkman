@@ -3,12 +3,16 @@ import { scoreMatch } from "@/lib/fuzzy";
 import { db } from "@/lib/db";
 import { trackDTO } from "@/lib/serialize";
 import { parseImportText } from "@/lib/import-parser";
+import { searchAudius, importAudiusTrack, audiusToDTO, type AudiusTrack } from "@/lib/audius";
 import type { ImportEntry, ImportPreview, Track } from "@/lib/types";
 
 const MAX_TEXT_LENGTH = 100_000;
 const SUGGESTION_THRESHOLD = 0.15;
 const MATCH_THRESHOLD = 0.55;
 const SUGGESTION_LIMIT = 5;
+const LIVE_MATCH_THRESHOLD = 0.5; // slightly looser for network candidates
+const MAX_LIVE_LOOKUPS = 40; // bound network work per request
+const LIVE_CONCURRENCY = 6;
 
 type JsonObject = Record<string, unknown>;
 
@@ -25,7 +29,26 @@ async function readJsonBody(req: NextRequest): Promise<{ ok: true; body: unknown
   }
 }
 
-// POST /api/import — parse pasted playlist text and match entries against the catalog
+/** Find the best Audius network candidate for a parsed entry. */
+async function bestAudiusCandidate(
+  title: string,
+  artist: string | undefined,
+  query: string
+): Promise<{ track: AudiusTrack; score: number } | null> {
+  const candidates = await searchAudius(query, 10);
+  let best: { track: AudiusTrack; score: number } | null = null;
+  for (const candidate of candidates) {
+    const dto = audiusToDTO(candidate);
+    const forward = scoreMatch(title, artist, dto);
+    const swapped = artist ? scoreMatch(artist, title, dto) : -1;
+    const score = Math.max(forward, swapped);
+    if (!best || score > best.score) best = { track: candidate, score };
+  }
+  return best && best.score >= LIVE_MATCH_THRESHOLD ? best : null;
+}
+
+// POST /api/import — parse pasted playlist text, match against the catalog, and
+// pull unmatched songs from the Audius network so every entry becomes playable.
 export async function POST(req: NextRequest) {
   const parsed = await readJsonBody(req);
   if (!parsed.ok) {
@@ -42,6 +65,7 @@ export async function POST(req: NextRequest) {
   if (text.length > MAX_TEXT_LENGTH) {
     return NextResponse.json({ error: "text is too large" }, { status: 400 });
   }
+  const enrich = body.enrich !== false;
 
   const { format, entries, nameHint } = parseImportText(text);
   const catalog = (await db.track.findMany({ orderBy: [{ trackNo: "asc" }] })).map(trackDTO);
@@ -81,15 +105,46 @@ export async function POST(req: NextRequest) {
       confidence: Math.round(best * 100) / 100,
       suggestions,
       swapped: useSwapped,
+      source: bestMatch ? ("catalog" as const) : undefined,
     };
   });
 
+  // Live enrichment: entries with no confident local match get searched on Audius.
+  if (enrich) {
+    const unmatched = results.filter((e) => e.bestMatch === null).slice(0, MAX_LIVE_LOOKUPS);
+    let cursor = 0;
+
+    async function worker(): Promise<void> {
+      while (cursor < unmatched.length) {
+        const entry = unmatched[cursor++];
+        const query = entry.artist ? `${entry.artist} ${entry.title}` : entry.title;
+        try {
+          const best = await bestAudiusCandidate(entry.title, entry.artist, query);
+          if (best) {
+            const saved = await importAudiusTrack(best.track);
+            if (saved) {
+              entry.bestMatch = trackDTO(saved);
+              entry.confidence = Math.round(best.score * 100) / 100;
+              entry.source = "audius";
+            }
+          }
+        } catch (err) {
+          console.error("[api/import] live match failed:", err instanceof Error ? err.message : err);
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(LIVE_CONCURRENCY, unmatched.length) }, () => worker()));
+  }
+
   const matched = results.filter((e) => e.bestMatch !== null).length;
+  const fromNetwork = results.filter((e) => e.source === "audius").length;
   const payload: ImportPreview = {
     format,
     playlistNameHint: nameHint,
     entries: results,
     stats: { total: results.length, matched },
   };
+  void fromNetwork;
   return NextResponse.json(payload);
 }

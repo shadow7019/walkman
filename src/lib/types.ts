@@ -12,6 +12,24 @@ export interface Track {
   audioFile: string;
   qualityTier: string;
   bitrateKbps: number;
+  source: "audius" | "local";
+  playCount: number;
+  favoriteCount: number;
+}
+
+export interface GenreInfo {
+  name: string;
+  count: number;
+  cover: string;
+}
+
+export interface SyncStatsResponse {
+  ok: boolean;
+  fetched: number;
+  added: number;
+  updated: number;
+  total: number;
+  syncedAt: string;
 }
 
 export interface PlaylistSummary {
@@ -49,6 +67,7 @@ export interface ImportEntry {
   confidence: number;
   suggestions: Track[];
   swapped: boolean; // true if artist/title order was swapped for the best match
+  source?: "catalog" | "audius"; // where the best match came from
 }
 
 export interface ImportPreview {
@@ -68,10 +87,10 @@ export interface QualityOption {
 }
 
 export const QUALITY_OPTIONS: QualityOption[] = [
-  { id: "low", label: "Data saver", detail: "96 kbps AAC — light on bandwidth", badge: "96" },
-  { id: "normal", label: "Normal", detail: "160 kbps AAC — balanced quality", badge: "160" },
-  { id: "high", label: "High", detail: "320 kbps MP3 — crisp detail", badge: "320" },
-  { id: "lossless", label: "Lossless", detail: "16-bit / 44.1 kHz FLAC-class — maximum fidelity", badge: "MAX" },
+  { id: "low", label: "Data saver", detail: "64 kbps HE-AAC — light on bandwidth", badge: "64" },
+  { id: "normal", label: "Normal", detail: "128 kbps AAC — balanced quality", badge: "128" },
+  { id: "high", label: "High", detail: "320 kbps HQ audio — full detail", badge: "320" },
+  { id: "lossless", label: "Max", detail: "Direct source stream — untouched master audio", badge: "MAX" },
 ];
 
 export function formatDuration(sec: number): string {

@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
 import { Heart, FileInput, Play } from "lucide-react";
 import { useUiStore } from "@/lib/ui-store";
-import { useHistory, useLikes, usePlaylists, useTracks } from "@/lib/api";
+import { useGenres, useHistory, useLikes, usePlaylists, useTracks } from "@/lib/api";
 import { SectionRow } from "./SectionRow";
 import { PlaylistCoverArt, PlayFab, TrackCard, GenreTile } from "./MediaCard";
 import { CoverArt } from "./CoverArt";
@@ -46,26 +45,15 @@ export function HomeView() {
   const setImportOpen = useUiStore((s) => s.setImportOpen);
 
   const { data: playlists, isLoading: loadingPlaylists } = usePlaylists();
-  const { data: allTracks, isLoading: loadingTracks } = useTracks();
+  const { data: trending, isLoading: loadingTrending } = useTracks("", "", true, "trending", 12);
+  const { data: fresh, isLoading: loadingFresh } = useTracks("", "", true, "newest", 12);
+  const { data: genres } = useGenres();
   const { data: history } = useHistory(10);
   const { data: likes } = useLikes();
 
-  const trending = useMemo(() => {
-    if (!allTracks) return [];
-    const arr = [...allTracks];
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr.slice(0, 10);
-  }, [allTracks]);
-
-  const genres = useMemo(() => {
-    if (!allTracks) return [];
-    const seen = new Map<string, string>();
-    for (const t of allTracks) if (!seen.has(t.genre)) seen.set(t.genre, t.cover);
-    return Array.from(seen.entries()).map(([genre, cover]) => ({ genre, cover }));
-  }, [allTracks]);
+  const trendingList = trending ?? [];
+  const freshList = fresh ?? [];
+  const topGenres = (genres ?? []).slice(0, 10);
 
   const madeForYou = (playlists ?? []).slice(0, 8);
 
@@ -78,10 +66,10 @@ export function HomeView() {
         <CoverArt src="/covers/walkman-hero.jpg" alt="Walkman hero" className="object-cover" sizes="(max-width: 768px) 100vw, 1200px" priority />
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-transparent" />
         <div className="absolute inset-0 flex flex-col justify-center gap-2 p-6 md:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-400">Free · Lossless · Yours</p>
-          <h2 className="max-w-md text-2xl font-black tracking-tight md:text-3xl">Every playlist you love, now on Walkman.</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-400">Free · 320 kbps HQ · Real artists</p>
+          <h2 className="max-w-md text-2xl font-black tracking-tight md:text-3xl">Real songs, auto-added every day.</h2>
           <p className="hidden max-w-md text-sm text-zinc-300 sm:block">
-            Paste a track list from Spotify, Apple Music or YouTube Music — we rebuild it here in hi-fi, for free.
+            Fresh tracks stream in from the Audius network daily — and you can still import any playlist you love, free.
           </p>
           <div className="pt-1">
             <Button onClick={() => setImportOpen(true)} className="w-fit rounded-full bg-amber-400 font-semibold text-black hover:bg-amber-300">
@@ -137,10 +125,16 @@ export function HomeView() {
         ) : null}
       </SectionRow>
 
-      <SectionRow title="Trending on Walkman" subtitle="What listeners are rewinding right now">
-        {loadingTracks && !allTracks
+      <SectionRow title="Trending on Walkman" subtitle="Real plays from the Audius network — auto-synced">
+        {loadingTrending && !trending
           ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-56 w-[160px] shrink-0 rounded-lg md:w-[180px]" />)
-          : trending.map((t) => <TrackCard key={t.id} track={t} contextTracks={trending} contextLabel="Trending on Walkman" />)}
+          : trendingList.map((t) => <TrackCard key={t.id} track={t} contextTracks={trendingList} contextLabel="Trending on Walkman" />)}
+      </SectionRow>
+
+      <SectionRow title="Fresh finds" subtitle="New songs auto-added to your catalog">
+        {loadingFresh && !fresh
+          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-56 w-[160px] shrink-0 rounded-lg md:w-[180px]" />)
+          : freshList.map((t) => <TrackCard key={t.id} track={t} contextTracks={freshList} contextLabel="Fresh finds" />)}
       </SectionRow>
 
       {history && history.length > 0 ? (
@@ -152,9 +146,9 @@ export function HomeView() {
       ) : null}
 
       <SectionRow title="Browse by mood" subtitle="Jump into a sound">
-        {genres.map(({ genre, cover }) => (
-          <div key={genre} className="w-[160px] shrink-0 md:w-[180px]">
-            <GenreTile genre={genre} cover={cover} onClick={() => navigate({ type: "search" })} />
+        {topGenres.map((g) => (
+          <div key={g.name} className="w-[160px] shrink-0 md:w-[180px]">
+            <GenreTile genre={g.name} cover={g.cover} count={g.count} onClick={() => navigate({ type: "genre", name: g.name })} />
           </div>
         ))}
       </SectionRow>

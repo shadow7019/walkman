@@ -9,19 +9,27 @@ datasource db {
 
 // Walkman music catalog
 model Track {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   title       String
   artist      String
   album       String
   genre       String
-  year        Int     @default(2024)
+  year        Int      @default(2024)
   durationSec Int
-  cover       String // path under /public, e.g. /covers/chrome-city.jpg
-  audioFile   String // path under /public, e.g. /audio/SoundHelix-Song-1.mp3
-  qualityTier String  @default("LOSSLESS") // LOSSLESS | HI-FI | STANDARD
-  bitrateKbps Int     @default(320)
-  trackNo     Int     @default(0) // catalog order
+  cover       String // local path under /public (e.g. /covers/x.jpg) OR remote artwork URL
+  audioFile   String   @default("") // local path under /public, empty for remote-streamed tracks
+  qualityTier String   @default("HQ") // HQ | HI-FI | STANDARD
+  bitrateKbps Int      @default(320)
+  trackNo     Int      @default(0) // catalog order
   createdAt   DateTime @default(now())
+
+  // Remote catalog (Audius network)
+  source        String    @default("local") // local | audius
+  audiusId      String?   @unique
+  releaseDate   DateTime?
+  playCount     Int       @default(0)
+  favoriteCount Int       @default(0)
+  permalink     String?
 
   playlistTracks PlaylistTrack[]
   likes          Like[]
@@ -30,6 +38,8 @@ model Track {
   @@index([artist])
   @@index([album])
   @@index([genre])
+  @@index([playCount])
+  @@index([createdAt])
 }
 
 model Playlist {
@@ -77,4 +87,16 @@ model PlayHistory {
 
   @@index([playedAt])
   @@index([trackId])
+}
+
+// Records each catalog sync run (auto-added new songs)
+model SyncLog {
+  id       String   @id @default(cuid())
+  scope    String // genre name or "all"
+  fetched  Int
+  added    Int
+  updated  Int
+  syncedAt DateTime @default(now())
+
+  @@index([syncedAt])
 }

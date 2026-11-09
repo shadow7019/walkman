@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { Play, Search, X } from "lucide-react";
-import { useTracks } from "@/lib/api";
+import { useGenres, useTracks } from "@/lib/api";
 import { usePlayerStore } from "@/lib/player";
 import { TrackRow } from "./TrackRow";
 import { SectionRow } from "./SectionRow";
@@ -18,10 +18,11 @@ export function SearchView() {
   const [genre, setGenre] = useState("");
   const deferredQ = useDeferredValue(q);
   const { data: tracks, isLoading, isFetched } = useTracks(deferredQ, genre, Boolean(deferredQ.trim() || genre));
-  const { data: allTracks } = useTracks();
+  const { data: genresData } = useGenres();
   const playQueue = usePlayerStore((s) => s.playQueue);
 
   const results = tracks ?? [];
+  const genres = genresData ?? [];
 
   const albums = useMemo(() => {
     const map = new Map<string, typeof results>();
@@ -31,13 +32,6 @@ export function SearchView() {
     }
     return Array.from(map.entries()).slice(0, 10);
   }, [results]);
-
-  const genres = useMemo(() => {
-    if (!allTracks) return [];
-    const seen = new Map<string, string>();
-    for (const t of allTracks) if (!seen.has(t.genre)) seen.set(t.genre, t.cover);
-    return Array.from(seen.entries()).map(([g, cover]) => ({ genre: g, cover }));
-  }, [allTracks]);
 
   const topResult = results[0];
   const songRows = results.slice(0, 8);
@@ -87,8 +81,8 @@ export function SearchView() {
         <div>
           <h2 className="mb-4 px-1 text-xl font-bold tracking-tight">Browse all</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {genres.map(({ genre: g, cover }) => (
-              <GenreTile key={g} genre={g} cover={cover} onClick={() => setGenre(g)} />
+            {genres.map((g) => (
+              <GenreTile key={g.name} genre={g.name} cover={g.cover} count={g.count} onClick={() => setGenre(g.name)} />
             ))}
             {!genres.length
               ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-lg md:h-32" />)

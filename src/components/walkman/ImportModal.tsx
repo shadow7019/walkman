@@ -221,6 +221,14 @@ export function ImportModal() {
                         {badge.label}
                       </span>
                     ) : null}
+                    {entry.source === "audius" ? (
+                      <span
+                        title="Added to your catalog"
+                        className="hidden shrink-0 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-bold text-amber-400 sm:inline-block"
+                      >
+                        matched on network
+                      </span>
+                    ) : null}
                     <Select
                       value={selectedId ?? NO_MATCH}
                       onValueChange={(v) => {

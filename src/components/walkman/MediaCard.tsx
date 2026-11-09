@@ -92,7 +92,7 @@ const GENRE_GRADIENTS: Record<string, string> = {
   Pop: "from-fuchsia-400 to-pink-600",
 };
 
-export function GenreTile({ genre, cover, onClick }: { genre: string; cover?: string; onClick: () => void }) {
+export function GenreTile({ genre, cover, count, onClick }: { genre: string; cover?: string; count?: number; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -102,6 +102,11 @@ export function GenreTile({ genre, cover, onClick }: { genre: string; cover?: st
       )}
     >
       <span className="relative z-10 text-base font-extrabold text-black drop-shadow-sm md:text-lg">{genre}</span>
+      {typeof count === "number" ? (
+        <span className="relative z-10 mt-1 block w-fit rounded-full bg-black/30 px-2 py-0.5 text-[10px] font-bold text-white/90">
+          {count} songs
+        </span>
+      ) : null}
       {cover ? (
         <span className="absolute -bottom-2 -right-3 block size-20 rotate-[18deg] overflow-hidden rounded shadow-2xl md:size-24">
           <CoverArt src={cover} alt="" sizes="120px" />

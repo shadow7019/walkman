@@ -53,12 +53,19 @@ function recordPlay(trackId: string): void {
 function updateMediaSession(track: Track): void {
   try {
     if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
-    const type = track.cover.endsWith(".png") ? "image/png" : "image/jpeg";
+    // Artwork may be a remote CDN URL or an app-relative path — MediaSession needs absolute URLs.
+    let artwork = track.cover;
+    try {
+      artwork = new URL(track.cover, window.location.origin).href;
+    } catch {
+      // keep the raw cover string if URL resolution fails
+    }
+    const type = track.cover.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist,
       album: track.album,
-      artwork: [{ src: track.cover, sizes: "640x640", type }],
+      artwork: [{ src: artwork, sizes: "640x640", type }],
     });
   } catch {
     // MediaSession unsupported — ignore

@@ -10,7 +10,8 @@ export type View =
   | { type: "search" }
   | { type: "library" }
   | { type: "liked" }
-  | { type: "playlist"; id: string };
+  | { type: "playlist"; id: string }
+  | { type: "genre"; name: string };
 
 interface UiState {
   view: View;

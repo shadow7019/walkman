@@ -1,14 +1,25 @@
 "use client";
 
-import { Heart, Home, Plus, Search } from "lucide-react";
+import { Heart, Home, Plus, RefreshCw, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/ui-store";
-import { useLikes, usePlaylists } from "@/lib/api";
+import { useLikes, usePlaylists, useSyncNow, useSyncStatus } from "@/lib/api";
 import { CassetteLogo } from "./CassetteLogo";
 import { Button } from "@/components/ui/button";
 import { FileInput } from "lucide-react";
 import type { View } from "@/lib/ui-store";
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 function NavItem({ icon: Icon, label, active, onClick }: { icon: LucideIcon; label: string; active: boolean; onClick: () => void }) {
   return (
@@ -32,6 +43,17 @@ export function Sidebar() {
   const setImportOpen = useUiStore((s) => s.setImportOpen);
   const { data: playlists } = usePlaylists();
   const { data: likes } = useLikes();
+  const syncNow = useSyncNow();
+  const { data: syncStatus } = useSyncStatus();
+
+  async function handleSync() {
+    try {
+      const stats = await syncNow.mutateAsync();
+      toast.success(`+${stats.added} new songs · ${stats.total} in catalog`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not sync new songs");
+    }
+  }
 
   const isActive = (t: View["type"]): boolean => {
     if (t === "library") return view.type === "library" || view.type === "playlist" || view.type === "liked";
@@ -128,9 +150,23 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-3 pb-1 text-[11px] text-muted-foreground">
-        <span className="size-1.5 rounded-full bg-amber-400" aria-hidden="true" />
-        Hi-Fi lossless streaming · 100% free
+      <div className="space-y-1 px-1 pb-1">
+        <button
+          onClick={handleSync}
+          disabled={syncNow.isPending}
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-white/5 px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-50 disabled:hover:bg-white/5"
+          aria-label="Sync new songs from the Audius network"
+        >
+          <RefreshCw className={cn("size-4", syncNow.isPending && "animate-spin")} aria-hidden="true" />
+          Sync new songs
+        </button>
+        {syncStatus?.lastSyncAt ? (
+          <p className="text-center text-[10px] text-muted-foreground">updated {relativeTime(syncStatus.lastSyncAt)}</p>
+        ) : null}
+        <div className="flex items-center gap-2 px-3 pt-1 text-[11px] text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+          320 kbps HQ streaming · 100% free
+        </div>
       </div>
     </aside>
   );

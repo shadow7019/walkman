@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { db } from "@/lib/db";
+import { resolveAudiusStream } from "@/lib/audius";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const track = await db.track.findUnique({ where: { id } });
   if (!track) return NextResponse.json({ error: "Track not found" }, { status: 404 });
+
+  // Remote tracks (Audius network): resolve a signed CDN URL and 302 the player to it.
+  if (track.source === "audius" && track.audiusId) {
+    const cdnUrl = await resolveAudiusStream(track.audiusId);
+    if (cdnUrl) {
+      return NextResponse.redirect(cdnUrl, {
+        status: 302,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    return NextResponse.json({ error: "Stream unavailable" }, { status: 502 });
+  }
+
+  // Local tracks: serve from /public with Range support.
   const filePath = path.join(process.cwd(), "public", track.audioFile);
   if (!existsSync(filePath)) return NextResponse.json({ error: "Audio file missing" }, { status: 404 });
   const total = statSync(filePath).size;

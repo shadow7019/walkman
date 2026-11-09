@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import { Music2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,12 +9,16 @@ interface CoverArtProps {
   alt: string;
   className?: string;
   iconClassName?: string;
-  sizes?: string;
-  priority?: boolean;
+  sizes?: string; // kept for API compatibility (next/image legacy); unused with plain <img>
+  priority?: boolean; // eager-load above-the-fold art
 }
 
-/** Album artwork with a warm gradient fallback when the image is missing. */
-export function CoverArt({ src, alt, className, iconClassName, sizes = "(max-width: 768px) 120px, 240px", priority }: CoverArtProps) {
+/**
+ * Album artwork with a warm gradient fallback when the image is missing.
+ * Uses a plain <img> so arbitrary remote CDN URLs (Audius creator nodes) work
+ * without next/image remotePatterns configuration.
+ */
+export function CoverArt({ src, alt, className, iconClassName, priority }: CoverArtProps) {
   const [error, setError] = useState(false);
 
   if (!src || error) {
@@ -34,13 +37,13 @@ export function CoverArt({ src, alt, className, iconClassName, sizes = "(max-wid
   }
 
   return (
-    <Image
+    <img
       src={src}
       alt={alt}
-      fill
-      sizes={sizes}
-      priority={priority}
-      className={cn("object-cover", className)}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      referrerPolicy="no-referrer"
+      className={cn("absolute inset-0 size-full object-cover", className)}
       onError={() => setError(true)}
     />
   );

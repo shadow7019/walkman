@@ -14,6 +14,9 @@ export function trackDTO(t: TrackRow): Track {
     audioFile: t.audioFile,
     qualityTier: t.qualityTier,
     bitrateKbps: t.bitrateKbps,
+    source: (t.source === "audius" ? "audius" : "local") as Track["source"],
+    playCount: t.playCount,
+    favoriteCount: t.favoriteCount,
   };
 }
 

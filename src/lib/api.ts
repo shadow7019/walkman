@@ -3,14 +3,25 @@
 // TanStack Query data layer for Walkman.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ImportPreview, PlaylistDetail, PlaylistSummary, Track } from "./types";
+import type { GenreInfo, ImportPreview, PlaylistDetail, PlaylistSummary, SyncStatsResponse, Track } from "./types";
+
+export type TrackSort = "catalog" | "trending" | "newest";
+
+export interface SyncStatus {
+  total: number;
+  genreCount: number;
+  lastSyncAt: string | null;
+}
 
 export const qk = {
-  tracks: (q: string, genre: string) => ["tracks", q, genre] as const,
+  tracks: (q: string, genre: string, sort: TrackSort = "catalog", limit?: number) =>
+    ["tracks", q, genre, sort, limit ?? null] as const,
   playlists: ["playlists"] as const,
   playlist: (id: string) => ["playlist", id] as const,
   likes: ["likes"] as const,
   history: ["history"] as const,
+  genres: ["genres"] as const,
+  syncStatus: ["syncStatus"] as const,
 };
 
 export interface LikesData {
@@ -45,16 +56,33 @@ async function sendJSON<T>(url: string, body: unknown, method = "POST"): Promise
 
 /* ---------------- queries ---------------- */
 
-export function useTracks(q = "", genre = "", enabled = true) {
+export function useTracks(q = "", genre = "", enabled = true, sort: TrackSort = "catalog", limit?: number) {
   return useQuery({
-    queryKey: qk.tracks(q, genre),
+    queryKey: qk.tracks(q, genre, sort, limit),
     queryFn: async () => {
-      const params = new URLSearchParams({ q, genre });
+      const params = new URLSearchParams({ q, genre, sort });
+      if (limit && limit > 0) params.set("limit", String(limit));
       const d = await getJSON<{ tracks: Track[] }>(`/api/tracks?${params.toString()}`);
       return d.tracks;
     },
     enabled,
     staleTime: 60_000,
+  });
+}
+
+export function useGenres() {
+  return useQuery({
+    queryKey: qk.genres,
+    queryFn: async () => (await getJSON<{ genres: GenreInfo[] }>("/api/genres")).genres,
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSyncStatus() {
+  return useQuery({
+    queryKey: qk.syncStatus,
+    queryFn: () => getJSON<SyncStatus>("/api/sync"),
+    staleTime: 30_000,
   });
 }
 
@@ -189,5 +217,20 @@ export function useRemoveTrackFromPlaylist() {
 export function useImportPreview() {
   return useMutation({
     mutationFn: (text: string) => sendJSON<ImportPreview>("/api/import", { text }),
+  });
+}
+
+export function useSyncNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => sendJSON<SyncStatsResponse>("/api/sync", undefined),
+    onSuccess: () => {
+      // prefix match refetches every tracks query (any q/genre/sort/limit combination)
+      void qc.invalidateQueries({ queryKey: ["tracks"] });
+      void qc.invalidateQueries({ queryKey: qk.genres });
+      void qc.invalidateQueries({ queryKey: qk.playlists });
+      void qc.invalidateQueries({ queryKey: qk.likes });
+      void qc.invalidateQueries({ queryKey: qk.syncStatus });
+    },
   });
 }

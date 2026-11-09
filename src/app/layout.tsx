@@ -1,0 +1,47 @@
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Walkman — Free Hi-Fi Music Streaming",
+  description:
+    "Walkman is a free music streaming app with lossless-quality playback and universal playlist import: bring your playlists from Spotify, Apple Music, YouTube Music and more.",
+  keywords: ["Walkman", "music streaming", "playlist import", "hi-fi audio", "free music app"],
+  applicationName: "Walkman",
+  openGraph: {
+    title: "Walkman — Free Hi-Fi Music Streaming",
+    description: "Stream in lossless quality for free and import playlists from any music app.",
+    siteName: "Walkman",
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#09090b",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}>
+        {children}
+      </body>
+    </html>
+  );
+}

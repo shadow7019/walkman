@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Walkman music catalog
+model Track {
+  id          String  @id @default(cuid())
+  title       String
+  artist      String
+  album       String
+  genre       String
+  year        Int     @default(2024)
+  durationSec Int
+  cover       String // path under /public, e.g. /covers/chrome-city.jpg
+  audioFile   String // path under /public, e.g. /audio/SoundHelix-Song-1.mp3
+  qualityTier String  @default("LOSSLESS") // LOSSLESS | HI-FI | STANDARD
+  bitrateKbps Int     @default(320)
+  trackNo     Int     @default(0) // catalog order
+  createdAt   DateTime @default(now())
+
+  playlistTracks PlaylistTrack[]
+  likes          Like[]
+  history        PlayHistory[]
+
+  @@index([artist])
+  @@index([album])
+  @@index([genre])
+}
+
+model Playlist {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  gradient     String   @default("from-amber-500 to-orange-700")
+  importedFrom String? // e.g. "Spotify JSON", "Apple Music text", "CSV"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tracks PlaylistTrack[]
+
+  @@index([updatedAt])
+}
+
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  playlistId String
+  trackId    String
+  position   Int
+  addedAt    DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  track    Track    @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, trackId])
+  @@index([playlistId])
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  trackId   String   @unique
+  createdAt DateTime @default(now())
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+}
+
+model PlayHistory {
+  id       String   @id @default(cuid())
+  trackId  String
+  playedAt DateTime @default(now())
+
+  track Track @relation(fields: [trackId], references: [id], onDelete: Cascade)
+
+  @@index([playedAt])
+  @@index([trackId])
+}

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const limitParam = Number.parseInt(searchParams.get("limit") ?? "", 10);
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : null;
 
-  // auto-add new songs: sync on empty catalog (bounded) or refresh stale ones in background
+  // auto-add new songs: deep-sweep when the catalog is small, refresh stale charts in background
   void ensureFreshCatalog().catch(() => undefined);
 
   // ids mode: return the requested tracks re-ordered to match the ids order
@@ -40,28 +40,34 @@ export async function GET(req: NextRequest) {
         ? [{ createdAt: "desc" as const }, { trackNo: "asc" as const }]
         : [{ trackNo: "asc" as const }];
 
-  const rows = await db.track.findMany({ orderBy });
-  let tracks: Track[] = rows.map(trackDTO);
+  const q = qParam.trim();
+  const genreExact = genreParam?.trim() ?? "";
 
-  // genre filter: case-insensitive exact match
-  const genre = genreParam?.trim().toLowerCase() ?? "";
-  if (genre) {
-    tracks = tracks.filter((t) => t.genre.toLowerCase() === genre);
+  // free-text search needs the whole candidate pool; otherwise filter + limit in SQL
+  const where = !q && genreExact ? { genre: genreExact } : undefined;
+  const take = !q && limit !== null ? limit : undefined;
+  let rows = await db.track.findMany({ where, orderBy, take });
+
+  // safety net: exact genre match found nothing → fall back to case-insensitive scan
+  if (!q && genreExact && rows.length === 0) {
+    rows = await db.track.findMany({ orderBy });
+    rows = rows.filter((t) => t.genre.toLowerCase() === genreExact.toLowerCase());
+    if (limit !== null) rows = rows.slice(0, limit);
   }
 
-  // fuzzy free-text search
-  const q = qParam.trim();
+  let tracks: Track[];
+
   if (q) {
-    tracks = tracks
-      .map((t) => ({ track: t, score: scoreSearchQuery(q, t) }))
+    // fuzzy free-text search — score raw rows, map only the winners to DTOs
+    tracks = rows
+      .filter((t) => !genreExact || t.genre.toLowerCase() === genreExact.toLowerCase())
+      .map((t) => ({ row: t, score: scoreSearchQuery(q, t) }))
       .filter((entry) => entry.score > 0.15)
       .sort((a, b) => b.score - a.score)
       .slice(0, 50)
-      .map((entry) => entry.track);
-  }
-
-  if (limit !== null) {
-    tracks = tracks.slice(0, limit);
+      .map((entry) => trackDTO(entry.row));
+  } else {
+    tracks = rows.map(trackDTO);
   }
 
   return NextResponse.json({ tracks });

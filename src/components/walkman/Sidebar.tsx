@@ -45,14 +45,20 @@ export function Sidebar() {
   const { data: likes } = useLikes();
   const syncNow = useSyncNow();
   const { data: syncStatus } = useSyncStatus();
+  const harvesting = syncNow.isPending || Boolean(syncStatus?.running);
 
   async function handleSync() {
+    if (harvesting) return; // a harvest is already running — just watch the progress line
     try {
-      const stats = await syncNow.mutateAsync();
+      const stats = await syncNow.mutateAsync("deep");
       toast.success(`+${stats.added} new songs · ${stats.total} in catalog`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not sync new songs");
+      toast.error(err instanceof Error ? err.message : "Could not harvest new music");
     }
+  }
+
+  function formatCount(n: number): string {
+    return n.toLocaleString("en-US");
   }
 
   const isActive = (t: View["type"]): boolean => {
@@ -153,15 +159,21 @@ export function Sidebar() {
       <div className="space-y-1 px-1 pb-1">
         <button
           onClick={handleSync}
-          disabled={syncNow.isPending}
-          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-white/5 px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-50 disabled:hover:bg-white/5"
-          aria-label="Sync new songs from the Audius network"
+          disabled={harvesting}
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full bg-white/5 px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-60 disabled:hover:bg-white/5"
+          aria-label="Add all new music from the Audius network"
         >
-          <RefreshCw className={cn("size-4", syncNow.isPending && "animate-spin")} aria-hidden="true" />
-          Sync new songs
+          <RefreshCw className={cn("size-4", harvesting && "animate-spin")} aria-hidden="true" />
+          {harvesting ? "Harvesting music…" : "Add all new music"}
         </button>
-        {syncStatus?.lastSyncAt ? (
-          <p className="text-center text-[10px] text-muted-foreground">updated {relativeTime(syncStatus.lastSyncAt)}</p>
+        {harvesting && syncStatus ? (
+          <p className="text-center text-[10px] tabular-nums text-amber-400" role="status" aria-live="polite">
+            sweeping the industry · +{formatCount(syncStatus.addedThisRun)} songs
+          </p>
+        ) : syncStatus?.lastSyncAt ? (
+          <p className="text-center text-[10px] text-muted-foreground">
+            {formatCount(syncStatus.total)} songs · updated {relativeTime(syncStatus.lastSyncAt)}
+          </p>
         ) : null}
         <div className="flex items-center gap-2 px-3 pt-1 text-[11px] text-muted-foreground">
           <span className="size-1.5 rounded-full bg-amber-400" aria-hidden="true" />

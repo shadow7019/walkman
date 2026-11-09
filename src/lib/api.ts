@@ -7,10 +7,16 @@ import type { GenreInfo, ImportPreview, PlaylistDetail, PlaylistSummary, SyncSta
 
 export type TrackSort = "catalog" | "trending" | "newest";
 
+export type SyncMode = "quick" | "deep";
+
 export interface SyncStatus {
   total: number;
   genreCount: number;
   lastSyncAt: string | null;
+  running: boolean;
+  mode: SyncMode | null;
+  addedThisRun: number;
+  fetchedThisRun: number;
 }
 
 export const qk = {
@@ -82,7 +88,9 @@ export function useSyncStatus() {
   return useQuery({
     queryKey: qk.syncStatus,
     queryFn: () => getJSON<SyncStatus>("/api/sync"),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    // while a harvest is running, poll live so the UI shows the catalog growing
+    refetchInterval: (query) => (query.state.data?.running ? 2_000 : false),
   });
 }
 
@@ -223,7 +231,7 @@ export function useImportPreview() {
 export function useSyncNow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => sendJSON<SyncStatsResponse>("/api/sync", undefined),
+    mutationFn: (mode: SyncMode = "quick") => sendJSON<SyncStatsResponse>("/api/sync", { mode }),
     onSuccess: () => {
       // prefix match refetches every tracks query (any q/genre/sort/limit combination)
       void qc.invalidateQueries({ queryKey: ["tracks"] });

@@ -25,6 +25,7 @@ export interface GenreInfo {
 
 export interface SyncStatsResponse {
   ok: boolean;
+  mode?: "quick" | "deep";
   fetched: number;
   added: number;
   updated: number;

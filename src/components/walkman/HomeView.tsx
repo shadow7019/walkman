@@ -1,8 +1,9 @@
 "use client";
 
 import { Heart, FileInput, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/ui-store";
-import { useGenres, useHistory, useLikes, usePlaylists, useTracks } from "@/lib/api";
+import { useGenres, useHistory, useLikes, usePlaylists, useSyncStatus, useTracks } from "@/lib/api";
 import { SectionRow } from "./SectionRow";
 import { PlaylistCoverArt, PlayFab, TrackCard, GenreTile } from "./MediaCard";
 import { CoverArt } from "./CoverArt";
@@ -50,10 +51,13 @@ export function HomeView() {
   const { data: genres } = useGenres();
   const { data: history } = useHistory(10);
   const { data: likes } = useLikes();
+  const { data: syncStatus } = useSyncStatus();
 
   const trendingList = trending ?? [];
   const freshList = fresh ?? [];
-  const topGenres = (genres ?? []).slice(0, 10);
+  const topGenres = (genres ?? []).slice(0, 14);
+  const totalSongs = syncStatus?.total ?? null;
+  const genreCount = syncStatus?.genreCount ?? null;
 
   const madeForYou = (playlists ?? []).slice(0, 8);
 
@@ -67,14 +71,27 @@ export function HomeView() {
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-transparent" />
         <div className="absolute inset-0 flex flex-col justify-center gap-2 p-6 md:p-8">
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-400">Free · 320 kbps HQ · Real artists</p>
-          <h2 className="max-w-md text-2xl font-black tracking-tight md:text-3xl">Real songs, auto-added every day.</h2>
+          <h2 className="max-w-lg text-2xl font-black tracking-tight md:text-3xl">The whole music industry, one tape deck.</h2>
           <p className="hidden max-w-md text-sm text-zinc-300 sm:block">
-            Fresh tracks stream in from the Audius network daily — and you can still import any playlist you love, free.
+            {totalSongs !== null ? (
+              <>
+                <span className="font-bold text-white tabular-nums">{totalSongs.toLocaleString("en-US")} real songs</span>
+                {genreCount !== null ? <span> across {genreCount} genres</span> : null} — harvested from the open Audius network and auto-added as new music drops.
+              </>
+            ) : (
+              <>Every genre, every scene, every era — harvested from the open Audius network and auto-added as new music drops.</>
+            )}
           </p>
-          <div className="pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button onClick={() => setImportOpen(true)} className="w-fit rounded-full bg-amber-400 font-semibold text-black hover:bg-amber-300">
               <FileInput className="size-4" /> Import a playlist
             </Button>
+            {totalSongs !== null ? (
+              <span className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-semibold text-zinc-200">
+                <span className={cn("size-1.5 rounded-full", syncStatus?.running ? "animate-pulse bg-emerald-400" : "bg-amber-400")} aria-hidden="true" />
+                {syncStatus?.running ? `Harvesting · +${syncStatus.addedThisRun.toLocaleString("en-US")}` : `${genreCount ?? 0} genres · free forever`}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>

@@ -1,9 +1,10 @@
 'use client'
 
-// Fullscreen Now Playing: big artwork, ambient glow, visualizer, lyrics, queue.
+// Fullscreen Now Playing: big artwork, ambient glow, real Web Audio visualizer,
+// EQ quick panel, lyrics, queue.
 import { useEffect, useRef, useState } from 'react'
 import {
-  X, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart, ChevronDown, ListMusic,
+  X, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart, ChevronDown, ListMusic, SlidersHorizontal,
 } from 'lucide-react'
 import { usePlayer } from '@/stores/player'
 import { useLibrary } from '@/stores/library'
@@ -12,41 +13,177 @@ import { Cover } from '@/components/cover'
 import { EqBars } from '@/components/track-list'
 import { fmtTime } from '@/types'
 import { cn } from '@/lib/utils'
+import { getFrequencyData, EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-// Simulated audio visualizer bars (smooth, beat-ish motion)
+// Real audio visualizer: maps the 256-bin FFT from the Web Audio analyser down
+// to BAR_COUNT bars using a power curve for logarithmic-ish grouping and skips
+// the top ~15% of bins (usually empty). Falls back to a low idle baseline when
+// paused or before the audio graph exists.
+const BAR_COUNT = 56
+
 function Visualizer({ playing }: { playing: boolean }) {
-  const bars = 48
-  const ref = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const levelsRef = useRef<number[]>(new Array(BAR_COUNT).fill(0.08))
+
   useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
     let raf = 0
-    const start = performance.now()
-    const tick = (now: number) => {
-      const el = ref.current
-      if (el) {
-        const t = (now - start) / 1000
-        const spans = el.children
-        for (let i = 0; i < spans.length; i++) {
-          const n = i / bars
-          const wave =
-            Math.sin(t * 2.2 + i * 0.55) * 0.5 +
-            Math.sin(t * 1.1 + i * 0.21) * 0.35 +
-            Math.sin(t * 3.7 + i * 0.83) * 0.15
-          const h = playing ? 12 + Math.abs(wave) * 68 * (0.35 + 0.65 * Math.sin(n * Math.PI)) : 8
-          ;(spans[i] as HTMLElement).style.height = `${h}%`
-        }
-      }
-      raf = requestAnimationFrame(tick)
+    let dpr = 1
+    let width = 0
+    let height = 0
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect()
+      dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
+      width = Math.max(1, Math.round(rect.width))
+      height = Math.max(1, Math.round(rect.height))
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
     }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [playing, bars])
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+
+    const draw = () => {
+      const data = playing ? getFrequencyData() : null
+      const usable = data ? Math.floor(data.length * 0.85) : 0
+      const levels = levelsRef.current
+      const gap = 3
+      const barW = Math.max(2, (width - gap * (BAR_COUNT - 1)) / BAR_COUNT)
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, width, height)
+
+      // emerald gradient, deep at the base -> bright at the tips
+      const grad = ctx.createLinearGradient(0, height, 0, 0)
+      grad.addColorStop(0, 'rgba(52, 211, 153, 0.35)')
+      grad.addColorStop(1, 'rgba(52, 211, 153, 0.85)')
+      ctx.fillStyle = grad
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        let target = 0.08
+        if (data) {
+          // power-curve bin grouping: low bars span 1 bin, high bars span many
+          const lo = Math.floor(Math.pow(i / BAR_COUNT, 1.7) * usable)
+          const hi = Math.max(lo + 1, Math.floor(Math.pow((i + 1) / BAR_COUNT, 1.7) * usable))
+          let sum = 0
+          let n = 0
+          for (let b = lo; b < hi && b < usable; b++) {
+            sum += data[b]
+            n++
+          }
+          const avg = n > 0 ? sum / n / 255 : 0
+          // gentle upward tilt so weak highs still read visually
+          const tilted = Math.min(1, avg * (0.8 + 0.5 * (i / BAR_COUNT)))
+          target = 0.08 + Math.pow(tilted, 0.9) * 0.92
+        }
+        const cur = levels[i]
+        // fast attack, slower release for organic motion
+        levels[i] = target > cur ? cur + (target - cur) * 0.45 : cur + (target - cur) * 0.16
+
+        const h = Math.max(2, levels[i] * height)
+        const x = i * (barW + gap)
+        const y = height - h
+        const r = Math.min(barW / 2, 2, h / 2)
+
+        ctx.beginPath()
+        ctx.moveTo(x, height)
+        ctx.lineTo(x, y + r)
+        ctx.arcTo(x, y, x + r, y, r)
+        ctx.lineTo(x + barW - r, y)
+        ctx.arcTo(x + barW, y, x + barW, y + r, r)
+        ctx.lineTo(x + barW, height)
+        ctx.closePath()
+        ctx.fill()
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [playing])
+
+  return <canvas ref={canvasRef} aria-hidden className="block h-14 w-full opacity-75" />
+}
+
+// 31 -> "31", 1000 -> "1k", 16000 -> "16k"
+function bandLabel(hz: number): string {
+  return hz >= 1000 ? `${hz / 1000}k` : `${hz}`
+}
+
+function bandDb(db: number): string {
+  return db > 0 ? `+${db}` : `${db}`
+}
+
+// Compact ByTune-style EQ quick panel. Gains flow through the player store;
+// the audio engine applies them, the UI stays a single source of truth.
+function EqQuickPanel() {
+  const { eqEnabled, eqPreset, eqGains, setEqEnabled, setEqBand, setEqPreset } = usePlayer()
 
   return (
-    <div ref={ref} className="flex h-14 items-end justify-center gap-1 opacity-70" aria-hidden>
-      {Array.from({ length: bars }).map((_, i) => (
-        <span key={i} className="w-1.5 rounded-t bg-gradient-to-t from-emerald-500/40 to-emerald-300/80 transition-[height] duration-75" style={{ height: '10%' }} />
-      ))}
+    <div className="absolute left-1/2 top-full z-30 mt-3 w-[340px] max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-xl border border-border/60 bg-black/80 p-4 text-left shadow-2xl backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Equalizer</p>
+          <p className="text-[10px] text-muted-foreground">10-band · {EQ_MIN} to +{EQ_MAX} dB</p>
+        </div>
+        <Switch checked={eqEnabled} onCheckedChange={setEqEnabled} aria-label="Enable equalizer" />
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Select value={eqPreset} onValueChange={setEqPreset}>
+          <SelectTrigger size="sm" aria-label="Equalizer preset" className="flex-1 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="text-xs">
+            {Object.keys(EQ_PRESETS).map((name) => (
+              <SelectItem key={name} value={name} className="text-xs">
+                {name}
+              </SelectItem>
+            ))}
+            <SelectItem value="Custom" disabled className="text-xs">
+              Custom
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setEqPreset('Flat')}
+        >
+          Reset
+        </Button>
+      </div>
+
+      <div className={cn('mt-3 flex flex-col gap-2', !eqEnabled && 'pointer-events-none opacity-50')}>
+        {EQ_BANDS.map((hz, i) => (
+          <div key={hz} className="flex items-center gap-2">
+            <span className="w-10 text-[10px] tabular-nums text-muted-foreground">{bandLabel(hz)}</span>
+            <Slider
+              aria-label={`${hz} Hz gain`}
+              className="flex-1"
+              min={EQ_MIN}
+              max={EQ_MAX}
+              step={1}
+              value={[eqGains[i] ?? 0]}
+              onValueChange={(v) => setEqBand(i, v[0] ?? 0)}
+            />
+            <span className="w-8 text-right text-[10px] tabular-nums text-muted-foreground">{bandDb(eqGains[i] ?? 0)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -55,22 +192,32 @@ export function FullscreenPlayer() {
   const {
     queue, queueIndex, isPlaying, position, duration, shuffle, repeat,
     playPause, next, prev, seek, toggleShuffle, cycleRepeat, playTrackAt,
+    eqEnabled,
   } = usePlayer()
   const { likedIds, toggleLike } = useLibrary()
   const { fullscreen, setFullscreen, navigate } = useUI()
+  const [eqOpen, setEqOpen] = useState(false)
   const track = queue[queueIndex]
 
-  // keyboard: N closes fullscreen; esc closes
+  // keyboard: N closes fullscreen; esc closes (esc closes the EQ panel first)
   useEffect(() => {
     if (!fullscreen) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || (e.key.toLowerCase() === 'n' && !(document.activeElement as HTMLElement)?.matches?.('input,textarea'))) {
+      if (e.key === 'Escape') {
+        if (eqOpen) {
+          setEqOpen(false)
+          return
+        }
+        setFullscreen(false)
+        return
+      }
+      if (e.key.toLowerCase() === 'n' && !(document.activeElement as HTMLElement)?.matches?.('input,textarea')) {
         setFullscreen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [fullscreen, setFullscreen])
+  }, [fullscreen, eqOpen, setFullscreen])
 
   if (!fullscreen || !track) return null
   const liked = likedIds.has(track.id)
@@ -105,7 +252,7 @@ export function FullscreenPlayer() {
       <div className="relative flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto px-6 pb-10">
         <div className="relative w-full max-w-sm md:max-w-md lg:max-w-lg">
           <Cover src={track.cover} alt={`${track.title} artwork`} className="aspect-square w-full shadow-2xl" rounded="rounded-xl" />
-          {isPlaying && <div className="absolute inset-x-0 -bottom-2 flex justify-center"><Visualizer playing={isPlaying} /></div>}
+          <div className="absolute inset-x-0 -bottom-2 flex justify-center"><Visualizer playing={isPlaying} /></div>
         </div>
 
         <div className="w-full max-w-xl text-center">
@@ -155,7 +302,7 @@ export function FullscreenPlayer() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="relative flex items-center gap-3">
           <button
             aria-label={liked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
             className={cn('flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10', liked && 'text-emerald-400')}
@@ -163,6 +310,19 @@ export function FullscreenPlayer() {
           >
             <Heart className={cn('h-3.5 w-3.5', liked && 'fill-emerald-400')} aria-hidden /> {liked ? 'Liked' : 'Like'}
           </button>
+          <button
+            type="button"
+            aria-label="Toggle equalizer"
+            aria-expanded={eqOpen}
+            onClick={() => setEqOpen((o) => !o)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs hover:bg-white/10',
+              (eqOpen || eqEnabled) && 'border-emerald-400/40 text-emerald-400',
+            )}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> EQ
+          </button>
+          {eqOpen && <EqQuickPanel />}
         </div>
 
         {/* up next strip */}

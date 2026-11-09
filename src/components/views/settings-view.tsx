@@ -1,11 +1,12 @@
 'use client'
 
-// Settings: playback (autoplay, crossfade, speed), quality tiers, catalog sync,
-// sleep timer, keyboard shortcuts.
+// Settings: playback (autoplay, crossfade, speed, skip silence), 10-band equalizer,
+// quality tiers, catalog sync, sleep timer, keyboard shortcuts.
 import { useEffect, useState } from 'react'
 import { usePlayer } from '@/stores/player'
 import { useUI } from '@/stores/ui'
 import { api } from '@/lib/client-api'
+import { EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -101,6 +102,14 @@ export function SettingsView() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Skip silence</p>
+              <p className="text-xs text-muted-foreground">Jumps over long quiet stretches (2.5s+) automatically. Uses the live audio signal.</p>
+            </div>
+            <Switch checked={player.skipSilence} onCheckedChange={player.setSkipSilence} aria-label="Toggle skip silence" />
+          </div>
         </div>
       </section>
 
@@ -135,6 +144,70 @@ export function SettingsView() {
             </Badge>
           </div>
         )}
+      </section>
+
+      {/* Equalizer */}
+      <section aria-label="Equalizer settings" className="rounded-xl border border-border/50 bg-black/30 p-5">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Equalizer
+        </h2>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">10-band equalizer</p>
+              <p className="text-xs text-muted-foreground">Shape the sound. Works on the live audio signal.</p>
+            </div>
+            <Switch checked={player.eqEnabled} onCheckedChange={player.setEqEnabled} aria-label="Toggle equalizer" />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Preset</p>
+              <p className="text-xs text-muted-foreground">Start from a curve, then fine-tune any band.</p>
+            </div>
+            <Select value={player.eqPreset} onValueChange={player.setEqPreset} disabled={!player.eqEnabled}>
+              <SelectTrigger className="w-40" aria-label="Equalizer preset">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(EQ_PRESETS).map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+                <SelectItem value="Custom" disabled>Custom</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            className={`grid gap-x-8 gap-y-3 sm:grid-cols-2 transition-opacity ${player.eqEnabled ? '' : 'pointer-events-none opacity-50'}`}
+          >
+            {EQ_BANDS.map((freq, i) => {
+              const gain = player.eqGains[i] ?? 0
+              return (
+                <div key={freq} className="flex items-center gap-3">
+                  <span className="w-12 text-xs tabular-nums text-muted-foreground">
+                    {freq < 1000 ? String(freq) : `${freq / 1000}k`}
+                  </span>
+                  <Slider
+                    className="flex-1"
+                    min={EQ_MIN}
+                    max={EQ_MAX}
+                    step={1}
+                    value={[gain]}
+                    onValueChange={(v) => player.setEqBand(i, v[0] ?? 0)}
+                    aria-label={`${freq < 1000 ? freq : `${freq / 1000}k`} hertz band`}
+                  />
+                  <span className="w-10 text-right text-xs tabular-nums">
+                    {gain > 0 ? `+${gain} dB` : `${gain} dB`}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <p className="mt-4 text-xs text-muted-foreground">
+          Presets: 10 presets from Bass Boost to Treble Boost. Your curve is saved automatically.
+        </p>
       </section>
 
       {/* Catalog sync */}

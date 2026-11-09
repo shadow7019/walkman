@@ -313,7 +313,7 @@ export async function fanOutGenre(genre: string, limitPerSource = 30): Promise<n
   } catch { /* best effort */ }
   try {
     const it = await itunesSearch({ term: genre, attribute: 'genreTerm', limit: limitPerSource })
-    upserts.push(...it.map(itunesToUpsert))
+    upserts.push(...it.map((t) => itunesToUpsert(t)))
   } catch { /* best effort */ }
   for (const u of upserts) {
     const r = await upsertTrack(u)
@@ -355,7 +355,7 @@ export async function syncCatalog(opts: { trendingLimit?: number; perGenreLimit?
     try { await runScope('audius', g, (await byGenre(g, perGenreLimit)).map(audiusToUpsert)) } catch {}
   }
   for (const g of ['Pop', 'Hip-Hop', 'Rock', 'Electronic', 'Jazz', 'Classical', 'R&B', 'Country', 'Latin', 'K-Pop', 'Metal', 'Lo-Fi']) {
-    try { await runScope('itunes', g, (await itunesSearch({ term: g, attribute: 'genreTerm', limit: perGenreLimit })).map(itunesToUpsert)) } catch {}
+    try { await runScope('itunes', g, (await itunesSearch({ term: g, attribute: 'genreTerm', limit: perGenreLimit })).map((t) => itunesToUpsert(t))) } catch {}
   }
   return { added, updated, logs }
 }

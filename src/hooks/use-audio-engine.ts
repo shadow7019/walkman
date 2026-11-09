@@ -1,10 +1,12 @@
 'use client'
 
 // Walkman audio engine: two <audio> elements for equal-power crossfade,
-// playback history (Replay), MediaSession integration, sleep timer.
+// Web Audio graph (10-band EQ + analyser), playback history (Replay),
+// MediaSession integration, sleep timer, opt-in skip silence.
 import { useEffect, useRef } from 'react'
 import { usePlayer, onEngineEvent } from '@/stores/player'
 import { api } from '@/lib/client-api'
+import { applyEq, ensureAudioGraph, getRmsLevel, resumeAudioGraph } from '@/lib/audio-graph'
 import type { Track } from '@/types'
 
 export function useAudioEngine() {
@@ -48,6 +50,12 @@ export function useAudioEngine() {
       cur.playbackRate = usePlayer.getState().speed
       const vol = usePlayer.getState().muted ? 0 : usePlayer.getState().volume
       cur.volume = vol
+      // route through the Web Audio graph (EQ + analyser) inside this gesture
+      const g = ensureAudioGraph(a, b)
+      if (g) {
+        const s = usePlayer.getState()
+        applyEq(s.eqGains, s.eqEnabled)
+      }
       if (startAt && startAt > 0) {
         cur.currentTime = startAt // works once metadata loads; browsers clamp
         const seekOnMeta = () => {
@@ -115,6 +123,7 @@ export function useAudioEngine() {
       } else if (e.type === 'pause') {
         active().pause()
       } else if (e.type === 'resume') {
+        resumeAudioGraph()
         if (!active().src) {
           const cur = s.queue[s.queueIndex]
           if (cur) beginTrack(cur, true, s.position)
@@ -168,6 +177,10 @@ export function useAudioEngine() {
       if (typeof saved.crossfadeSec === 'number') s.setCrossfade(saved.crossfadeSec)
       if (typeof saved.autoplay === 'boolean') s.setAutoplay(saved.autoplay)
       if (typeof saved.quality === 'string' && ['auto', 'full', 'saver'].includes(saved.quality)) s.setQuality(saved.quality)
+      if (typeof saved.eqEnabled === 'boolean') s.setEqEnabled(saved.eqEnabled)
+      if (typeof saved.eqPreset === 'string') s.setEqPreset(saved.eqPreset)
+      if (Array.isArray(saved.eqGains) && saved.eqGains.length === 10) usePlayer.setState({ eqGains: saved.eqGains.map(Number) })
+      if (typeof saved.skipSilence === 'boolean') s.setSkipSilence(saved.skipSilence)
       if (typeof saved.shuffle === 'boolean') usePlayer.setState({ shuffle: saved.shuffle })
       if (['off', 'all', 'one'].includes(saved.repeat)) usePlayer.setState({ repeat: saved.repeat })
       // queue restore (paused at saved position)
@@ -191,9 +204,43 @@ export function useAudioEngine() {
       }
     }, 1000)
 
+    // EQ store watcher — apply gains whenever EQ state changes
+    let lastEqKey = ''
+    const eqTick = setInterval(() => {
+      const s = usePlayer.getState()
+      const key = `${s.eqEnabled}|${s.eqGains.join(',')}`
+      if (key !== lastEqKey) {
+        lastEqKey = key
+        applyEq(s.eqGains, s.eqEnabled)
+      }
+    }, 500)
+
+    // skip silence (ByTune-style, opt-in): when the live signal stays below
+    // ~-46 dBFS for over 2.5s, jump the playhead over the silent stretch.
+    let silentMs = 0
+    const silenceTick = setInterval(() => {
+      const s = usePlayer.getState()
+      if (!s.skipSilence || !s.isPlaying) { silentMs = 0; return }
+      const el = activeRef.current === 'a' ? a : b
+      if (!el || !el.src || el.paused || el.ended) { silentMs = 0; return }
+      const rms = getRmsLevel()
+      if (rms < 0 || rms > 0.005) { silentMs = 0; return }
+      silentMs += 250
+      if (silentMs >= 2500 && isFinite(el.duration)) {
+        const jumpSec = Math.min(silentMs / 1000, Math.max(el.duration - el.currentTime - 1, 0))
+        if (jumpSec > 0.5) {
+          el.currentTime = el.currentTime + jumpSec
+          usePlayer.getState().internal.setPosition(el.currentTime, el.duration)
+        }
+        silentMs = 0
+      }
+    }, 250)
+
     return () => {
       off()
       clearInterval(sleepTick)
+      clearInterval(eqTick)
+      clearInterval(silenceTick)
       a.pause(); b.pause()
       a.removeEventListener('timeupdate', onTime)
       b.removeEventListener('timeupdate', onTime)

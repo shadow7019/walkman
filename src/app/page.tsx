@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { useUI, hydrateRecentSearches } from '@/stores/ui'
 import { useLibrary } from '@/stores/library'
+import { usePins } from '@/stores/pins'
 import { useAudioEngine } from '@/hooks/use-audio-engine'
 import { Sidebar } from '@/components/shell/sidebar'
 import { TopBar } from '@/components/shell/topbar'
@@ -20,6 +21,7 @@ export default function Page() {
   useEffect(() => {
     hydrateRecentSearches()
     useLibrary.getState().loadAll()
+    usePins.getState().hydrate()
   }, [])
 
   // bottom mobile nav state

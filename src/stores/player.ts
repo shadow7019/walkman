@@ -1,9 +1,11 @@
 'use client'
 
 // Walkman playback engine state — one module-level dual-element audio engine
-// is driven by this zustand store (crossfade, autoplay, sleep timer, speed).
+// is driven by this zustand store (crossfade, autoplay, sleep timer, speed,
+// 10-band EQ, skip silence).
 import { create } from 'zustand'
 import type { Track } from '@/types'
+import { EQ_BANDS, EQ_PRESETS } from '@/lib/audio-graph'
 
 type Repeat = 'off' | 'all' | 'one'
 
@@ -23,6 +25,10 @@ interface PlayerState {
   autoplay: boolean
   sleepAt: number | null // epoch ms
   quality: 'auto' | 'full' | 'saver' // Spotufi-style quality tiers
+  eqEnabled: boolean
+  eqPreset: string
+  eqGains: number[] // dB per band, matches EQ_BANDS
+  skipSilence: boolean
   restored: boolean
   // actions
   playQueue: (tracks: Track[], index: number, contextTitle?: string) => void
@@ -44,6 +50,10 @@ interface PlayerState {
   setAutoplay: (b: boolean) => void
   startSleepTimer: (min: number) => void
   setQuality: (q: 'auto' | 'full' | 'saver') => void
+  setEqEnabled: (b: boolean) => void
+  setEqBand: (bandIndex: number, db: number) => void
+  setEqPreset: (name: string) => void
+  setSkipSilence: (b: boolean) => void
   resumeSession: () => boolean // restore persisted queue (paused)
   // internal — driven by use-audio-engine
   internal: {
@@ -81,6 +91,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
       localStorage.setItem('walkman:player', JSON.stringify({
         volume: s.volume, muted: s.muted, shuffle: s.shuffle, repeat: s.repeat,
         speed: s.speed, crossfadeSec: s.crossfadeSec, autoplay: s.autoplay, quality: s.quality,
+        eqEnabled: s.eqEnabled, eqPreset: s.eqPreset, eqGains: s.eqGains, skipSilence: s.skipSilence,
         queue: s.queue.slice(0, 100), queueIndex: s.queueIndex, contextTitle: s.contextTitle,
         position: s.position,
       }))
@@ -147,6 +158,10 @@ export const usePlayer = create<PlayerState>((set, get) => {
     autoplay: true,
     sleepAt: null,
     quality: 'auto',
+    eqEnabled: false,
+    eqPreset: 'Flat',
+    eqGains: [...EQ_PRESETS.Flat],
+    skipSilence: false,
     restored: false,
 
     playQueue: (tracks, index, contextTitle = '') => {
@@ -263,6 +278,20 @@ export const usePlayer = create<PlayerState>((set, get) => {
       set({ sleepAt: Date.now() + min * 60000 })
     },
     setQuality: (q) => { set({ quality: q }); persist() },
+    setEqEnabled: (b) => { set({ eqEnabled: b }); persist() },
+    setEqBand: (bandIndex, db) => {
+      const gains = [...get().eqGains]
+      gains[bandIndex] = Math.max(-12, Math.min(12, db))
+      const preset = gains.every((g, i) => g === (EQ_PRESETS[get().eqPreset]?.[i] ?? 0)) ? get().eqPreset : 'Custom'
+      set({ eqGains: gains, eqPreset: preset })
+      persist()
+    },
+    setEqPreset: (name) => {
+      const gains = EQ_PRESETS[name] ? [...EQ_PRESETS[name]] : [...get().eqGains]
+      set({ eqPreset: name, eqGains: gains })
+      persist()
+    },
+    setSkipSilence: (b) => { set({ skipSilence: b }); persist() },
     resumeSession: () => {
       try {
         const saved = JSON.parse(localStorage.getItem('walkman:player') ?? '{}')

@@ -234,7 +234,6 @@ export function PlayerBar() {
         {track ? `Now playing ${track.title} by ${track.artist}. ${queue.length - queueIndex - 1} tracks in queue.` : 'Nothing playing'}
       </div>
       {/* keep removeFromQueue referenced for a11y via queue panel */}
-      <span className="sr-only">{typeof removeFromQueue === 'function' && playTrackAt ? '' : ''}</span>
     </footer>
   )
 }

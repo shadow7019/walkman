@@ -66,7 +66,7 @@ export function HomeView() {
   }, [])
 
   // quick picks: liked + top genres + first playlist
-  const quickPicks: { label: string; gradient: string; onClick: () => void; icon?: 'heart'; covers?: string[] }[] = [
+  const quickPicks: { label: string; gradient: string; onClick: () => void; icon?: string; covers?: string[] }[] = [
     { label: 'Liked Songs', gradient: 'from-rose-500 to-red-700', icon: 'heart', onClick: () => navigate({ name: 'liked' }) },
     ...genres.slice(0, 3).map((g) => ({
       label: g.name,

@@ -41,3 +41,10 @@ export function trackDTO(t: DbTrack): TrackDTO {
     playCount: t.playCount, favoriteCount: t.favoriteCount, permalink: t.permalink,
   }
 }
+
+/** Playlist rows ordered by their stored position. */
+export function orderedTracks(
+  playlist: { tracks: { trackId: string; position: number }[] | undefined },
+): { trackId: string; position: number }[] {
+  return [...(playlist?.tracks ?? [])].sort((a, b) => a.position - b.position)
+}

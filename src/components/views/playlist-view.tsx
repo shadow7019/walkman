@@ -1,10 +1,11 @@
 'use client'
 
 // Playlist detail (rename/delete/export/remove), Liked Songs, History.
-import { useCallback, useEffect, useState } from 'react'
-import { Play, Shuffle, Pencil, Trash2, Download, MoreHorizontal, Heart, Clock } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Play, Shuffle, Pencil, Trash2, Download, MoreHorizontal, Heart, Clock, Pin } from 'lucide-react'
 import { usePlayer } from '@/stores/player'
 import { useLibrary } from '@/stores/library'
+import { usePins } from '@/stores/pins'
 import { useUI } from '@/stores/ui'
 import { api } from '@/lib/client-api'
 import { TrackList } from '@/components/track-list'
@@ -38,6 +39,8 @@ export function PlaylistView({ id }: { id: string }) {
   const { playQueue } = usePlayer()
   const { refreshPlaylists } = useLibrary()
   const { navigate, toast } = useUI()
+  const { isPinned, togglePin } = usePins()
+  const pinned = isPinned(id)
   const [playlist, setPlaylist] = useState<PlaylistDetail | null>(null)
   const [tracks, setTracks] = useState<Track[] | null>(null)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -45,7 +48,11 @@ export function PlaylistView({ id }: { id: string }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
-  const load = useCallback(async () => {
+  // idempotent hydration of persisted pins (safe no-op if already hydrated)
+  useEffect(() => { usePins.getState().hydrate() }, [])
+
+  // Reload helper — only invoked from event handlers (React Compiler memoizes automatically).
+  const load = async () => {
     try {
       const r = await api.playlist(id)
       setPlaylist(r.playlist)
@@ -56,7 +63,7 @@ export function PlaylistView({ id }: { id: string }) {
       toast('Playlist not found')
       navigate({ name: 'home' })
     }
-  }, [id, navigate, toast])
+  }
 
   useEffect(() => {
     let alive = true
@@ -156,6 +163,15 @@ export function PlaylistView({ id }: { id: string }) {
               aria-label={`Shuffle ${playlist.name}`}
             >
               <Shuffle className="h-4 w-4" aria-hidden /> Shuffle
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn('gap-2 border-white/20 px-3', pinned && 'text-emerald-400')}
+              onClick={() => togglePin(id)}
+              aria-label={pinned ? `Unpin ${playlist.name}` : `Pin ${playlist.name}`}
+            >
+              <Pin className={cn('h-4 w-4', pinned && 'fill-current')} aria-hidden /> {pinned ? 'Unpin' : 'Pin'}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

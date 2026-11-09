@@ -4,6 +4,7 @@ export const GENRES = [
   'Classical', 'Country', 'Metal', 'Indie', 'Latin', 'Folk',
   'Ambient', 'Reggae', 'Blues', 'Funk', 'Soul', 'Techno',
   'House', 'Dubstep', 'Lo-Fi', 'K-Pop', 'Afrobeats', 'Soundtrack',
+  'Bollywood', 'Anime',
 ] as const
 
 export type Genre = (typeof GENRES)[number]
@@ -33,6 +34,8 @@ export const GENRE_COLORS: Record<string, string> = {
   'K-Pop': 'from-pink-400 to-fuchsia-600',
   Afrobeats: 'from-amber-500 to-orange-800',
   Soundtrack: 'from-indigo-400 to-slate-700',
+  Bollywood: 'from-orange-400 to-pink-600',
+  Anime: 'from-rose-400 to-purple-600',
 }
 
 // Map arbitrary genre strings from any source to canonical genre
@@ -40,6 +43,8 @@ export function canonicalGenre(raw: string): string {
   const g = (raw || '').toLowerCase().trim()
   if (!g) return 'Pop'
   const rules: [RegExp, string][] = [
+    [/bollywood|filmi|indian.?pop|desi/, 'Bollywood'],
+    [/anime|vocaloid/, 'Anime'],
     [/hip.?hop|rap|trap|drill|grime|gangsta/, 'Hip-Hop'],
     [/dubstep|bass|140/, 'Dubstep'],
     [/techno|trance|acid/, 'Techno'],

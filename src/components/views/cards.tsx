@@ -111,6 +111,45 @@ export function GenreTile({ genre, size = 'lg' }: { genre: GenreInfo; size?: 'lg
   )
 }
 
+// deterministic gradient per language
+const LANGUAGE_GRADIENTS = [
+  'from-emerald-500 to-teal-800', 'from-rose-500 to-red-800', 'from-amber-400 to-orange-700',
+  'from-fuchsia-500 to-purple-800', 'from-lime-500 to-green-800', 'from-cyan-500 to-teal-800',
+  'from-orange-400 to-pink-600', 'from-violet-500 to-indigo-800', 'from-teal-400 to-cyan-800',
+  'from-yellow-500 to-orange-700', 'from-purple-500 to-purple-900', 'from-green-500 to-emerald-800',
+]
+export function languageGradient(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return LANGUAGE_GRADIENTS[h % LANGUAGE_GRADIENTS.length]
+}
+
+export function LanguageTile({ language, size = 'lg' }: { language: { name: string; count: number; cover?: string }; size?: 'lg' | 'sm' }) {
+  const { navigate } = useUI()
+  return (
+    <button
+      role="listitem"
+      onClick={() => navigate({ name: 'language', language: language.name })}
+      className={cn(
+        'relative flex items-center overflow-hidden rounded-xl bg-gradient-to-br text-left shadow-lg transition-transform hover:scale-[1.02]',
+        languageGradient(language.name),
+        size === 'lg' ? 'h-24 w-full p-4 sm:h-28' : 'h-16 w-40 shrink-0 p-3'
+      )}
+      aria-label={`Browse ${language.name} music`}
+    >
+      {language.cover && (
+        <img src={language.cover} alt="" className="absolute -right-4 -top-4 h-20 w-20 rotate-12 rounded-md shadow-2xl" loading="lazy" />
+      )}
+      <div className="relative">
+        <span className="flex items-center gap-1.5 text-base font-bold text-white drop-shadow-md sm:text-lg">
+          {language.name}
+        </span>
+        <span className="mt-0.5 block text-xs text-white/85">{language.count} songs</span>
+      </div>
+    </button>
+  )
+}
+
 export function ArtistChip({ name, onPlay }: { name: string; onPlay?: () => void }) {
   const { navigate } = useUI()
   return (

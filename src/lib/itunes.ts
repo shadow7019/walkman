@@ -27,6 +27,7 @@ export async function itunesSearch(opts: {
   limit?: number
   entity?: 'song' | 'album' | 'musicArtist'
   attribute?: string
+  country?: string // storefront, e.g. 'US', 'IN', 'KR', 'BR' — unlocks every language
   genre?: boolean
 }): Promise<iTunesTrack[]> {
   const p = new URLSearchParams({
@@ -36,6 +37,7 @@ export async function itunesSearch(opts: {
     limit: String(opts.limit ?? 25),
   })
   if (opts.attribute) p.set('attribute', opts.attribute)
+  if (opts.country) p.set('country', opts.country)
   const r = await fetch(`https://itunes.apple.com/search?${p}`, {
     signal: AbortSignal.timeout(12000),
     headers: { Accept: 'application/json' },

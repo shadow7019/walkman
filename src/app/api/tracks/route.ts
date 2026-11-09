@@ -4,11 +4,12 @@ import { trackDTO } from '@/lib/serialize'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/tracks?genre=&mood=&source=&hasFull=&q=&sort=&limit=&offset=&ids=
+// GET /api/tracks?genre=&mood=&language=&source=&hasFull=&q=&sort=&limit=&offset=&ids=
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams
   const genre = sp.get('genre')
   const mood = sp.get('mood')
+  const language = sp.get('language')
   const source = sp.get('source')
   const hasFull = sp.get('hasFull')
   const q = sp.get('q')
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = {}
   if (genre) where.genre = { in: genre.split(',') }
   if (mood) where.mood = mood
+  if (language) where.language = { in: language.split(',') }
   if (source) where.source = source
   if (hasFull === '1') where.hasFull = true
   if (q) {

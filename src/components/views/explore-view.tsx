@@ -9,7 +9,7 @@ import { useUI } from '@/stores/ui'
 import { api } from '@/lib/client-api'
 import { TrackList } from '@/components/track-list'
 import { SectionRow } from '@/components/track-list'
-import { TrackCard, GenreTile, SectionHeader } from '@/components/views/cards'
+import { TrackCard, GenreTile, LanguageTile, SectionHeader } from '@/components/views/cards'
 import { SkeletonRow } from '@/components/views/home-view'
 import { GENRE_COLORS } from '@/lib/genre'
 import type { ExploreData, Track } from '@/types'
@@ -20,11 +20,13 @@ export function ExploreView() {
   const { navigate } = useUI()
   const [data, setData] = useState<ExploreData | null>(null)
   const [genres, setGenres] = useState<{ name: string; color: string; count: number }[]>([])
+  const [languages, setLanguages] = useState<{ name: string; count: number; cover: string }[]>([])
 
   useEffect(() => {
-    Promise.allSettled([api.explore(), api.genres()]).then(([e, g]) => {
+    Promise.allSettled([api.explore(), api.genres(), api.languages()]).then(([e, g, l]) => {
       if (e.status === 'fulfilled') setData(e.value)
       if (g.status === 'fulfilled') setGenres(g.value.genres.filter((x) => x.count > 0))
+      if (l.status === 'fulfilled') setLanguages(l.value.languages.filter((x) => x.count > 0))
     })
   }, [])
 
@@ -86,6 +88,15 @@ export function ExploreView() {
               <TrackCard key={t.id} track={t} list={data.underground} contextTitle="Underground gems" />
             ))}
           </SectionRow>
+        </section>
+      )}
+
+      {languages.length > 0 && (
+        <section aria-label="Around the world">
+          <SectionHeader title="Around the world" subtitle="Every language, real songs from every scene" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {languages.slice(0, 18).map((l) => <LanguageTile key={l.name} language={l} />)}
+          </div>
         </section>
       )}
 
@@ -204,6 +215,35 @@ export function GenreView({ genre }: { genre: string }) {
         badge="Genre"
       />
       <TrackList tracks={tracks} contextTitle={`${genre} genre`} />
+    </div>
+  )
+}
+
+export function LanguageView({ language }: { language: string }) {
+  const [tracks, setTracks] = useState<Track[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    api.tracks({ language, limit: 100, sort: 'plays' })
+      .then((r) => { if (alive) setTracks(r.tracks) })
+      .catch(() => { if (alive) setTracks([]) })
+    return () => { alive = false }
+  }, [language])
+
+  if (!tracks) return <div className="py-8"><SkeletonRow /></div>
+
+  return (
+    <div className="pb-4">
+      <BackButton />
+      <CollectionHero
+        title={language}
+        subtitle="Real songs in this language, from across the industry"
+        gradient="from-emerald-500 to-teal-800"
+        tracks={tracks}
+        contextTitle={`${language} music`}
+        badge="Language"
+      />
+      <TrackList tracks={tracks} contextTitle={`${language} music`} />
     </div>
   )
 }

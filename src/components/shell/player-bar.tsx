@@ -67,7 +67,7 @@ export function PlayerBar() {
                 </button>
                 <button
                   className="block max-w-full truncate text-xs text-muted-foreground hover:text-foreground hover:underline"
-                  onClick={() => navigate({ name: 'artist', name: track.artist })}
+                  onClick={() => navigate({ name: 'artist', artistName: track.artist })}
                 >
                   {track.artist}
                 </button>

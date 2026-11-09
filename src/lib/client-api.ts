@@ -1,6 +1,6 @@
 // Typed API client (browser side)
 import type {
-  Track, PlaylistSummary, GenreInfo, ExploreData,
+  Track, PlaylistSummary, GenreInfo, LanguageInfo, ExploreData,
   LyricsResult, ReplayStats, ImportResult,
 } from '@/types'
 
@@ -21,6 +21,7 @@ export const api = {
   search: (q: string, extend = true) =>
     json<{ tracks: Track[]; extended: number; local: number }>(`/api/search?q=${encodeURIComponent(q)}&extend=${extend ? 1 : 0}`),
   genres: () => json<{ genres: GenreInfo[]; total: number; fullLength: number }>('/api/genres'),
+  languages: () => json<{ languages: LanguageInfo[]; total: number; languageCount: number }>('/api/languages'),
   explore: () => json<ExploreData>('/api/explore'),
 
   // playlists

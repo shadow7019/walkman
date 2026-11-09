@@ -7,6 +7,8 @@ export interface Track {
   genre: string
   rawGenre: string
   mood: string
+  language: string
+  country: string
   year: number
   durationMs: number
   cover: string
@@ -39,6 +41,12 @@ export interface GenreInfo {
   name: string
   color: string
   count: number
+}
+
+export interface LanguageInfo {
+  name: string
+  count: number
+  cover: string
 }
 
 export interface ExploreData {
@@ -89,6 +97,7 @@ export type View =
   | { name: 'search' }
   | { name: 'explore' }
   | { name: 'genre'; genre: string }
+  | { name: 'language'; language: string }
   | { name: 'mood'; mood: string }
   | { name: 'playlist'; id: string }
   | { name: 'liked' }

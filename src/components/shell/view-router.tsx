@@ -4,7 +4,7 @@
 import { useUI } from '@/stores/ui'
 import { HomeView } from '@/components/views/home-view'
 import { SearchView } from '@/components/views/search-view'
-import { ExploreView, GenreView, MoodView, ArtistView } from '@/components/views/explore-view'
+import { ExploreView, GenreView, LanguageView, MoodView, ArtistView } from '@/components/views/explore-view'
 import { PlaylistView, LikedView, HistoryView } from '@/components/views/playlist-view'
 import { ReplayView } from '@/components/views/replay-view'
 import { ImportView } from '@/components/views/import-view'
@@ -18,6 +18,7 @@ export function ViewRouter() {
     case 'search': return <SearchView />
     case 'explore': return <ExploreView />
     case 'genre': return <GenreView genre={view.genre} />
+    case 'language': return <LanguageView language={view.language} />
     case 'mood': return <MoodView mood={view.mood} />
     case 'playlist': return <PlaylistView id={view.id} />
     case 'liked': return <LikedView />

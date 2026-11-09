@@ -9,7 +9,7 @@ import { useLibrary } from '@/stores/library'
 import { useUI } from '@/stores/ui'
 import { api } from '@/lib/client-api'
 import { Cover } from '@/components/cover'
-import { TrackCard, MixCard, PlaylistCard, GenreTile, SectionHeader } from '@/components/views/cards'
+import { TrackCard, MixCard, PlaylistCard, GenreTile, LanguageTile, SectionHeader } from '@/components/views/cards'
 import { SectionRow } from '@/components/track-list'
 import type { Track, GenreInfo, ReplayStats } from '@/types'
 import { cn } from '@/lib/utils'
@@ -38,6 +38,7 @@ export function HomeView() {
   const [newForYou, setNewForYou] = useState<Track[]>([])
   const [trending, setTrending] = useState<Track[]>([])
   const [genres, setGenres] = useState<GenreInfo[]>([])
+  const [languages, setLanguages] = useState<{ name: string; count: number; cover: string }[]>([])
   const [taste, setTaste] = useState<TasteData | null>(null)
   const [stats, setStats] = useState<ReplayStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -48,13 +49,15 @@ export function HomeView() {
       api.tracks({ sort: 'recent', limit: 14 }),
       api.tracks({ hasFull: '1', sort: 'plays', limit: 14 }),
       api.genres(),
+      api.languages(),
       fetch('/api/taste').then((r) => (r.ok ? r.json() : null)).catch(() => null),
       api.stats('month'),
-    ]).then(([n, t, g, ta, st]) => {
+    ]).then(([n, t, g, l, ta, st]) => {
       if (!alive) return
       if (n.status === 'fulfilled') setNewForYou(n.value.tracks)
       if (t.status === 'fulfilled') setTrending(t.value.tracks)
       if (g.status === 'fulfilled') setGenres(g.value.genres.filter((x) => x.count > 0).slice(0, 8))
+      if (l.status === 'fulfilled') setLanguages(l.value.languages.filter((x) => x.count > 0))
       if (ta.status === 'fulfilled') setTaste(ta.value as TasteData | null)
       if (st.status === 'fulfilled') setStats(st.value)
       setLoading(false)
@@ -165,6 +168,19 @@ export function HomeView() {
             {trending.map((t) => (
               <TrackCard key={t.id} track={t} list={trending} contextTitle="Trending now" />
             ))}
+          </SectionRow>
+        </section>
+      )}
+
+      {languages.length > 0 && (
+        <section aria-label="Around the world">
+          <SectionHeader
+            title="Around the world"
+            subtitle="Real songs in every language"
+            action={<Button variant="ghost" size="sm" onClick={() => navigate({ name: 'explore' })}>See all</Button>}
+          />
+          <SectionRow ariaLabel="Languages">
+            {languages.map((l) => <LanguageTile key={l.name} language={l} size="sm" />)}
           </SectionRow>
         </section>
       )}

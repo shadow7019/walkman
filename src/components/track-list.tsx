@@ -108,12 +108,15 @@ export function TrackList({ tracks, contextTitle, showAlbum = true, showIndex = 
                       <span className="rounded-sm bg-muted-foreground/30 px-1 text-[9px] font-bold uppercase leading-4 text-muted-foreground">E</span>
                     )}
                     {t.hasFull && (
-                      <span className="hidden rounded-sm border border-emerald-500/50 px-1 text-[9px] font-semibold uppercase leading-4 text-emerald-400 sm:inline" title="Full-length track — {t.bitrateKbps} kbps">Full</span>
+                      <span className="hidden rounded-sm border border-emerald-500/50 px-1 text-[9px] font-semibold uppercase leading-4 text-emerald-400 sm:inline" title={`Full-length track — ${t.bitrateKbps} kbps`}>Full</span>
+                    )}
+                    {t.language && t.language !== 'Unknown' && (
+                      <span className="hidden rounded-sm bg-white/10 px-1 text-[9px] font-medium leading-4 text-muted-foreground lg:inline" title={`Language: ${t.language}`}>{t.language}</span>
                     )}
                   </div>
                   <button
                     className="block max-w-full truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
-                    onClick={(e) => { e.stopPropagation(); navigate({ name: 'artist', name: t.artist }) }}
+                    onClick={(e) => { e.stopPropagation(); navigate({ name: 'artist', artistName: t.artist }) }}
                   >
                     {t.artist}
                   </button>
@@ -155,7 +158,7 @@ export function TrackList({ tracks, contextTitle, showAlbum = true, showIndex = 
                     <DropdownMenuItem onClick={() => { addToQueue(t); toast(`Added to queue: ${t.title}`) }}>
                       <ListPlus className="mr-2 h-4 w-4" /> Add to queue
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => { navigate({ name: 'artist', name: t.artist }) }}>
+                    <DropdownMenuItem onClick={() => { navigate({ name: 'artist', artistName: t.artist }) }}>
                       <Disc3 className="mr-2 h-4 w-4" /> Go to artist
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />

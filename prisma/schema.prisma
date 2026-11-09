@@ -16,6 +16,8 @@ model Track {
   genre       String   @default("Pop") // canonical genre
   rawGenre    String   @default("") // source's own genre label
   mood        String   @default("") // e.g. "Energetic", "Peaceful"
+  language    String   @default("English") // song language (Hindi, Korean, Spanish, …)
+  country     String   @default("") // storefront/scene origin, e.g. "IN", "KR"
   year        Int      @default(2024)
   durationMs  Int      @default(0)
   cover       String   @default("") // remote artwork URL
@@ -43,6 +45,7 @@ model Track {
   @@index([album])
   @@index([genre])
   @@index([mood])
+  @@index([language])
   @@index([playCount])
   @@index([createdAt])
   @@index([title])

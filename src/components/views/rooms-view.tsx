@@ -392,7 +392,7 @@ export function RoomsView() {
           <TrackList
             tracks={room.queue.map((q) => ({
               id: q.trackId, title: q.title, artist: q.artist, album: '', genre: '', rawGenre: '',
-              mood: '', year: 0, durationMs: q.durationMs, cover: q.cover, source: 'room', sourceId: '',
+              mood: '', language: '', country: '', year: 0, durationMs: q.durationMs, cover: q.cover, source: 'room', sourceId: '',
               hasFull: true, qualityTier: 'HI-FI', bitrateKbps: 320, explicit: false,
               playCount: 0, favoriteCount: 0, permalink: '',
             }))}

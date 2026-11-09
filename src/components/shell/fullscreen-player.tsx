@@ -92,7 +92,7 @@ export function FullscreenPlayer() {
 
       <div className="relative flex items-center justify-between p-6">
         <button
-          onClick={() => navigate({ name: 'artist', name: track.artist })}
+          onClick={() => navigate({ name: 'artist', artistName: track.artist })}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
           {track.artist}

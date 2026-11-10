@@ -5,8 +5,7 @@
 import { useEffect, useState } from 'react'
 import { usePlayer } from '@/stores/player'
 import { useUI } from '@/stores/ui'
-import { api, type ArtistSweep } from '@/lib/client-api'
-import type { SpotifySync } from '@/lib/client-api'
+import { api, type ArtistSweep, type SpotifySync, type DeepSweep, type FullSweep } from '@/lib/client-api'
 import { EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
@@ -14,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal, Users, Music2 } from 'lucide-react'
+import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal, Users, Music2, Disc3, Zap } from 'lucide-react'
 
 interface SyncStatus {
   logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]
@@ -25,6 +24,12 @@ interface SyncStatus {
   sweptArtists?: number
   spotifySync?: SpotifySync
   spotifyPlaylists?: number
+  deepSweep?: DeepSweep
+  deepCrawledArtists?: number
+  thinArtists?: number
+  fullSweep?: FullSweep
+  fullLength?: number
+  previewCount?: number
 }
 
 export function SettingsView() {
@@ -35,22 +40,54 @@ export function SettingsView() {
   const [syncing, setSyncing] = useState(false)
   const [expanding, setExpanding] = useState(false)
   const [spotifySyncing, setSpotifySyncing] = useState(false)
+  const [deepSyncing, setDeepSyncing] = useState(false)
+  const [fullSyncing, setFullSyncing] = useState(false)
 
   useEffect(() => {
     api.syncStatus().then(setSync).catch(() => {})
     api.genres().then((g) => setGenres({ total: g.total, fullLength: g.fullLength })).catch(() => {})
   }, [])
 
-  // live-poll while the artist & band sweep or the Spotify charts sync runs
+  // live-poll while any sweep runs
   const sweep = sync?.artistSweep
   const spSync = sync?.spotifySync
+  const deepSweep = sync?.deepSweep
+  const fullSweep = sync?.fullSweep
   useEffect(() => {
-    if (!sweep?.running && !spSync?.running) return
+    if (!sweep?.running && !spSync?.running && !deepSweep?.running && !fullSweep?.running) return
     const t = setInterval(() => {
       api.syncStatus().then(setSync).catch(() => {})
     }, 2500)
     return () => clearInterval(t)
-  }, [sweep?.running, spSync?.running])
+  }, [sweep?.running, spSync?.running, deepSweep?.running, fullSweep?.running])
+
+  const runFullSongs = async () => {
+    setFullSyncing(true)
+    try {
+      await api.fullSongs()
+      toast('Converting every preview to a full-length 320 kbps song')
+      const s = await api.syncStatus()
+      setSync(s)
+    } catch {
+      toast('Could not start the full-song sweep — try again')
+    } finally {
+      setFullSyncing(false)
+    }
+  }
+
+  const completeDiscographies = async () => {
+    setDeepSyncing(true)
+    try {
+      await api.deepArtists()
+      toast('Completing every artist’s discography — all albums, all songs')
+      const s = await api.syncStatus()
+      setSync(s)
+    } catch {
+      toast('Could not start the discography sweep — try again')
+    } finally {
+      setDeepSyncing(false)
+    }
+  }
 
   const syncSpotifyCharts = async () => {
     setSpotifySyncing(true)
@@ -303,6 +340,69 @@ export function SettingsView() {
               <p className="text-xs text-emerald-400" aria-live="polite">
                 {spSync.done}/{spSync.total} playlists · +{spSync.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
                 {spSync.current ? ` · now: ${spSync.current}` : ''}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Full-song conversion — no more 30-second previews */}
+        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={runFullSongs}
+              disabled={fullSyncing || !!fullSweep?.running}
+              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            >
+              {fullSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Zap className="h-4 w-4" aria-hidden />}
+              {fullSweep?.running ? 'Converting to full songs…' : 'Convert all previews to full songs'}
+            </Button>
+            {sync && typeof sync.fullLength === 'number' && typeof sync.previewCount === 'number' && (
+              <p className="text-xs text-muted-foreground">
+                <span className="text-emerald-400">{sync.fullLength.toLocaleString()} full-length</span> · {sync.previewCount.toLocaleString()} previews left
+              </p>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Upgrades every 30-second preview to a full-length 320 kbps stream — official JioSaavn masters and Audius full tracks. Also happens automatically the moment you play a song.
+          </p>
+          {fullSweep?.running && fullSweep.total > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <Progress value={(fullSweep.done / fullSweep.total) * 100} className="h-2" aria-label="Full-song sweep progress" />
+              <p className="text-xs text-emerald-400" aria-live="polite">
+                {fullSweep.done.toLocaleString()}/{fullSweep.total.toLocaleString()} checked · {fullSweep.added.toLocaleString()} upgraded to full
+                {fullSweep.current ? ` · now: ${fullSweep.current}` : ''}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Discography completion — every album, every song for under-covered artists */}
+        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={completeDiscographies}
+              disabled={deepSyncing || !!deepSweep?.running}
+              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            >
+              {deepSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Disc3 className="h-4 w-4" aria-hidden />}
+              {deepSweep?.running ? 'Completing discographies…' : 'Complete all artist discographies'}
+            </Button>
+            {sync && typeof sync.thinArtists === 'number' && (
+              <p className="text-xs text-muted-foreground">
+                {sync.thinArtists.toLocaleString()} artists need more songs
+                {sync.deepCrawledArtists ? ` · ${sync.deepCrawledArtists.toLocaleString()} discographies completed` : ''}
+              </p>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Walks every artist’s full album list and pulls <strong>every song on every album</strong> — no more one-song artists. Runs thinnest artists first and resumes where it left off.
+          </p>
+          {deepSweep?.running && deepSweep.total > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <Progress value={(deepSweep.done / deepSweep.total) * 100} className="h-2" aria-label="Discography sweep progress" />
+              <p className="text-xs text-emerald-400" aria-live="polite">
+                {deepSweep.done}/{deepSweep.total} artists · +{deepSweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+                {deepSweep.current ? ` · now: ${deepSweep.current}` : ''}
               </p>
             </div>
           )}

@@ -22,6 +22,8 @@ export interface ArtistSweep {
 }
 
 export type SpotifySync = ArtistSweep
+export type DeepSweep = ArtistSweep
+export type FullSweep = ArtistSweep
 
 export const api = {
   // catalog
@@ -59,13 +61,19 @@ export const api = {
   stats: (period: string) => json<ReplayStats>(`/api/stats?period=${period}`),
 
   // sync
-  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; artistCount?: number; lastSyncedAt: string | null; artistSweep?: ArtistSweep; sweptArtists?: number; spotifySync?: SpotifySync; spotifyPlaylists?: number }>('/api/sync'),
+  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; artistCount?: number; lastSyncedAt: string | null; artistSweep?: ArtistSweep; sweptArtists?: number; spotifySync?: SpotifySync; spotifyPlaylists?: number; deepSweep?: DeepSweep; deepCrawledArtists?: number; thinArtists?: number; fullSweep?: FullSweep; fullLength?: number; previewCount?: number }>('/api/sync'),
   runSync: () =>
     json<{ ok: boolean; added: number; updated: number; total: number }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }),
   expandArtists: () =>
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artists' }) }),
   syncSpotify: () =>
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'spotify' }) }),
+  deepArtist: (artist: string) =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artist-deep', artist }) }),
+  deepArtists: () =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'deep-artists' }) }),
+  fullSongs: () =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'fullsongs' }) }),
 
   // lyrics / radio / import
   lyrics: (title: string, artist: string, durationSec?: number) =>

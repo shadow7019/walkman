@@ -7,7 +7,8 @@
 import { db } from '@/lib/db'
 import { canonicalGenre, canonicalMood } from '@/lib/genre'
 import { trending, underground, byGenre, searchTracks, artworkUrl, type AudiusTrack } from '@/lib/audius'
-import { itunesSearch, artwork600, type iTunesTrack } from '@/lib/itunes'
+import { itunesSearch, itunesAlbumSearch, itunesLookupSongs, artwork600, type iTunesTrack, type iTunesAlbum } from '@/lib/itunes'
+import { matchSaavnTrack } from '@/lib/saavn'
 import { ARTIST_ROSTER, type ArtistEntry } from '@/lib/artists'
 import {
   SPOTIFY_AUTO_PLAYLISTS,
@@ -301,13 +302,19 @@ export async function globalSeed(onProgress?: (done: number, total: number, adde
 const fold = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
 // Keep only tracks actually by the requested act (term search also matches song titles)
+const foldTokens = (name: string): string[] =>
+  fold(name).split(/[^a-z0-9]+/).filter((t) => t.length > 1)
+
+// Loose artist-name match: every significant token must appear in the target name
+function nameMatches(artistName: string, target: string): boolean {
+  const tokens = foldTokens(artistName)
+  if (!tokens.length) return true
+  const tn = fold(target)
+  return tokens.every((tok) => tn.includes(tok))
+}
+
 function byThisArtist(artistName: string, results: iTunesTrack[]): iTunesTrack[] {
-  const tokens = fold(artistName).split(/[^a-z0-9]+/).filter((t) => t.length > 1)
-  if (!tokens.length) return results
-  return results.filter((t) => {
-    const an = fold(t.artistName)
-    return tokens.every((tok) => an.includes(tok))
-  })
+  return results.filter((t) => nameMatches(artistName, t.artistName))
 }
 
 export interface SweepProgress {
@@ -470,6 +477,239 @@ export async function spotifySync(
   }
   onProgress?.({ running: false, done: total, total, added, current: '' })
   return { added, scanned: total, skippedPlaylists }
+}
+
+// --- Deep discography crawl: EVERY album, EVERY song for under-covered artists ---
+// iTunes song-search only surfaces scattered hits; many artists end up with a
+// single track. This pass walks their full album list and pulls complete
+// tracklists, so acts like The Neighbourhood get their whole discography.
+
+export interface DeepSweepProgress {
+  running: boolean
+  done: number
+  total: number
+  added: number
+  current: string
+}
+
+// Crawl one artist's complete discography: album search → per-album song lookup.
+// Returns the number of songs added. Pass `keySet` (from deepArtistsSync) to
+// reuse a preloaded dedupe index instead of reloading the library per artist.
+export async function deepCrawlArtist(
+  name: string,
+  opts: { maxAlbums?: number; country?: string; genre?: string; language?: string; keySet?: Set<string> } = {},
+): Promise<number> {
+  const maxAlbums = opts.maxAlbums ?? 50
+  const albumsRaw = await itunesAlbumSearch({ term: name, attribute: 'artistTerm', country: opts.country, limit: 200 })
+  // keep albums actually credited to this act, newest first
+  const albums = albumsRaw
+    .filter((a: iTunesAlbum) => nameMatches(name, a.artistName))
+    .sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+    .slice(0, maxAlbums)
+
+  // dedupe index: reuse the caller's, or load a fresh one for a single crawl
+  const keys = opts.keySet ?? new Set<string>()
+  if (!opts.keySet) {
+    const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+    for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+  }
+
+  let added = 0
+  for (const album of albums) {
+    try {
+      const songs = await itunesLookupSongs(album.collectionId, 200)
+      const mine = songs.filter((t) => nameMatches(name, t.artistName))
+      for (const t of mine) {
+        const key = `${norm(t.trackName)}|${norm(t.artistName)}`
+        if (keys.has(key)) continue
+        keys.add(key)
+        const r = await upsertTrack(
+          itunesToUpsert(t, opts.language, opts.country, opts.genre ?? album.primaryGenreName),
+        )
+        if (r === 'added') added++
+      }
+    } catch {
+      await sleep(2500) // rate-limited — back off, try next album
+    }
+    await sleep(350)
+  }
+  await db.syncLog.create({
+    data: { source: 'artist-deep', scope: name, fetched: albums.length, added, updated: 0, detail: opts.genre ?? '' },
+  }).catch(() => {})
+  return added
+}
+
+// Deep-crawl every under-covered artist (≤ maxSongs tracks), oldest-thinnest
+// first. Resumable: artists already crawled (SyncLog source='artist-deep') are
+// skipped on re-runs. Known roster acts get their language/country/genre hints.
+export async function deepArtistsSync(
+  onProgress?: (p: DeepSweepProgress) => void,
+  opts: { maxSongs?: number; maxAlbums?: number } = {},
+): Promise<{ added: number; scanned: number; skippedArtists: number }> {
+  const maxSongs = opts.maxSongs ?? 3
+  const maxAlbums = opts.maxAlbums ?? 50
+
+  // under-covered artists, thinnest first
+  const groups = await db.track.groupBy({ by: ['artist'], _count: { _all: true } })
+  const thin = groups
+    .filter((g) => g._count._all <= maxSongs)
+    .sort((a, b) => a._count._all - b._count._all)
+    .map((g) => g.artist)
+
+  // resume: acts already deep-crawled in a previous run
+  const doneScopes = new Set(
+    (await db.syncLog.findMany({ where: { source: 'artist-deep' }, select: { scope: true } })).map((l) => l.scope),
+  )
+
+  // roster hints by folded name
+  const rosterHints = new Map<string, ArtistEntry>()
+  for (const r of ARTIST_ROSTER) rosterHints.set(fold(r.name), r)
+
+  // preload the dedupe index once for the whole run
+  const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+  const keys = new Set<string>()
+  for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+
+  let added = 0
+  let skippedArtists = 0
+  const total = thin.length
+  for (let i = 0; i < total; i++) {
+    const name = thin[i]
+    if (doneScopes.has(name)) {
+      skippedArtists++
+      onProgress?.({ running: true, done: i + 1, total, added, current: name })
+      continue
+    }
+    try {
+      const hint = rosterHints.get(fold(name))
+      const a = await deepCrawlArtist(name, {
+        maxAlbums,
+        country: hint?.country,
+        genre: hint?.genre,
+        language: hint?.language,
+        keySet: keys,
+      })
+      added += a
+    } catch {
+      await sleep(2500)
+      continue // not marked done — retried next run
+    }
+    onProgress?.({ running: true, done: i + 1, total, added, current: name })
+    await sleep(350)
+  }
+  onProgress?.({ running: false, done: total, total, added, current: '' })
+  return { added, scanned: total, skippedArtists }
+}
+
+// --- Full-song enrichment: upgrade 30s previews to full-length streams ---
+// Sources tried per track (in order): Audius (320 kbps full), JioSaavn
+// (official 320 kbps full, strict artist match). Previews stay as fallback.
+
+export interface FullSweepProgress {
+  running: boolean
+  done: number
+  total: number
+  added: number
+  current: string
+}
+
+export type FullEnrichResult = 'full' | 'already' | 'none'
+
+// Try to attach a full-length stream to one track. Persists the upgrade.
+// Audius and JioSaavn are probed in parallel; Audius wins ties (open full-length).
+export async function enrichTrackFull(trackId: string): Promise<FullEnrichResult> {
+  const track = await db.track.findUnique({ where: { id: trackId } })
+  if (!track) return 'none'
+  if (track.hasFull && track.streamUrl) return 'already'
+
+  const audiusProbe = (async (): Promise<string | null> => {
+    try {
+      const au: AudiusTrack[] = await searchTracks(`${track.title} ${track.artist}`, 6)
+      for (const t of au) {
+        const name = t.user?.name ?? ''
+        const nt = norm(track.title)
+        const na = norm(track.artist)
+        const ok = norm(t.title) === nt && (!na || norm(name).includes(na) || na.includes(norm(name)))
+        if (ok && t.duration && Math.abs(t.duration * 1000 - track.durationMs) < Math.max(15000, track.durationMs * 0.25)) {
+          return `https://discoveryprovider.audius.co/v1/tracks/${t.id}/stream?app_name=Walkman`
+        }
+      }
+    } catch (e) { console.warn('[enrich] audius probe error:', (e as Error)?.message) }
+    return null
+  })()
+
+  const saavnProbe = (async (): Promise<{ url: string; image: string; album: string; year?: number } | null> => {
+    try {
+      const s = await matchSaavnTrack(track.title, track.artist)
+      if (!s) return null
+      // duration sanity: official track lengths should roughly agree
+      const durOk = !s.durationSec || !track.durationMs || Math.abs(s.durationSec * 1000 - track.durationMs) < Math.max(20000, track.durationMs * 0.3)
+      if (!durOk) console.warn('[enrich] saavn duration mismatch:', track.title, s.durationSec, track.durationMs)
+      if (durOk) return { url: s.fullUrl320, image: s.image, album: s.album, year: s.year }
+    } catch (e) { console.warn('[enrich] saavn probe error:', (e as Error)?.message) }
+    return null
+  })()
+
+  const [auUrl, sv] = await Promise.all([audiusProbe, saavnProbe])
+  if (auUrl) {
+    await db.track.update({
+      where: { id: track.id },
+      data: { streamUrl: auUrl, hasFull: true, qualityTier: 'HI-FI', bitrateKbps: 320 },
+    })
+    return 'full'
+  }
+  if (sv) {
+    await db.track.update({
+      where: { id: track.id },
+      data: {
+        streamUrl: sv.url,
+        hasFull: true,
+        qualityTier: 'HI-FI',
+        bitrateKbps: 320,
+        cover: track.cover || sv.image,
+        album: track.album || sv.album,
+        year: track.year ?? sv.year,
+      },
+    })
+    return 'full'
+  }
+  return 'none'
+}
+
+// Convert the whole library from previews to full songs. Resumable: the
+// cursor (last processed track id) is stored in SyncLog (source 'fullsongs').
+export async function fullSongsSweep(onProgress?: (p: FullSweepProgress) => void): Promise<{ converted: number; scanned: number }> {
+  let cursorLog = await db.syncLog.findFirst({ where: { source: 'fullsongs', scope: 'cursor' }, orderBy: { syncedAt: 'desc' } })
+  let cursor: string | null = cursorLog?.detail ?? null
+
+  const total = await db.track.count({ where: { hasFull: false } })
+  let converted = 0
+  let scanned = 0
+  const BATCH_LOG = 40
+
+  for (;;) {
+    const rows = await db.track.findMany({
+      where: { hasFull: false, ...(cursor ? { id: { gt: cursor } } : {}) },
+      orderBy: { id: 'asc' },
+      take: 200,
+      select: { id: true, title: true, artist: true },
+    })
+    if (!rows.length) break
+    for (const row of rows) {
+      cursor = row.id
+      scanned++
+      try {
+        const r = await enrichTrackFull(row.id)
+        if (r === 'full') converted++
+      } catch { /* keep going */ }
+      onProgress?.({ running: true, done: scanned, total, added: converted, current: row.artist })
+      await sleep(220) // gentle on upstream APIs
+    }
+    await db.syncLog.create({ data: { source: 'fullsongs', scope: 'cursor', fetched: scanned, added: converted, updated: 0, detail: cursor } }).catch(() => {})
+    if (scanned % (BATCH_LOG * 25) === 0) await sleep(1500)
+  }
+  onProgress?.({ running: false, done: scanned, total, added: converted, current: '' })
+  return { converted, scanned }
 }
 
 // --- Fan-out: extend the catalog from all sources at once ---

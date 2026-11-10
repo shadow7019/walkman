@@ -39,6 +39,10 @@ export async function ensureCatalog(): Promise<void> {
       void spotifySync(undefined, SPOTIFY_AUTO_PLAYLISTS)
         .then((sp) => console.log(`[walkman] spotify auto-add: +${sp.added} songs`))
         .catch((e) => console.error('[walkman] spotify auto-add failed:', e))
+      // Full-song conversion — keep turning previews into full-length streams
+      void (await import('@/lib/catalog')).fullSongsSweep()
+        .then((fs) => console.log(`[walkman] full-song sweep: ${fs.converted}/${fs.scanned} converted`))
+        .catch((e) => console.error('[walkman] full-song sweep failed:', e))
     }
   } catch (e) {
     console.error('[walkman] ensureCatalog failed:', e)
@@ -57,6 +61,10 @@ export async function ensureCatalog(): Promise<void> {
           await spotifySync(undefined, SPOTIFY_AUTO_PLAYLISTS)
             .then((sp) => console.log(`[walkman] periodic spotify sync: +${sp.added} songs`))
             .catch((e) => console.error('[walkman] periodic spotify sync failed:', e))
+          // resume the full-song conversion sweep every cycle
+          await (await import('@/lib/catalog')).fullSongsSweep()
+            .then((fs) => console.log(`[walkman] periodic full-song sweep: ${fs.converted}/${fs.scanned} converted`))
+            .catch((e) => console.error('[walkman] periodic full-song sweep failed:', e))
         } catch (e) {
           console.error('[walkman] periodic sync failed:', e)
         }

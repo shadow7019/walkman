@@ -1,7 +1,8 @@
 'use client'
 
-// Top bar: back/forward, live search with suggestions, sync indicator.
+// Top bar: brand mark (mobile), back/forward, live search with suggestions, sync indicator.
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import { Search, ArrowLeft, RefreshCw, X } from 'lucide-react'
 import { useUI } from '@/stores/ui'
 import { usePlayer } from '@/stores/player'
@@ -64,6 +65,15 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 bg-background/80 px-4 backdrop-blur-xl">
+      {/* brand mark — mobile only (sidebar is hidden on small screens) */}
+      <button
+        onClick={() => navigate({ name: 'home' })}
+        aria-label="Walkman home"
+        className="shrink-0 md:hidden"
+      >
+        <Image src="/logo.png" alt="Walkman logo" width={28} height={28} className="h-7 w-7 rounded-lg shadow-md shadow-black/50" priority />
+      </button>
+
       <button
         onClick={() => canBack() && back()}
         aria-label="Go back"

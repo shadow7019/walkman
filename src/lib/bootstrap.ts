@@ -43,6 +43,10 @@ export async function ensureCatalog(): Promise<void> {
       void (await import('@/lib/catalog')).fullSongsSweep()
         .then((fs) => console.log(`[walkman] full-song sweep: ${fs.converted}/${fs.scanned} converted`))
         .catch((e) => console.error('[walkman] full-song sweep failed:', e))
+      // Discography completion — every thin artist (≤3 songs) gets ALL albums & songs
+      void (await import('@/lib/catalog')).deepArtistsSync()
+        .then((d) => console.log(`[walkman] discography sweep: +${d.added} songs across ${d.scanned} artists`))
+        .catch((e) => console.error('[walkman] discography sweep failed:', e))
     }
   } catch (e) {
     console.error('[walkman] ensureCatalog failed:', e)
@@ -65,6 +69,10 @@ export async function ensureCatalog(): Promise<void> {
           await (await import('@/lib/catalog')).fullSongsSweep()
             .then((fs) => console.log(`[walkman] periodic full-song sweep: ${fs.converted}/${fs.scanned} converted`))
             .catch((e) => console.error('[walkman] periodic full-song sweep failed:', e))
+          // resume discography completion every cycle — thinnest artists first
+          void (await import('@/lib/catalog')).deepArtistsSync()
+            .then((d) => console.log(`[walkman] periodic discography sweep: +${d.added} songs`))
+            .catch((e) => console.error('[walkman] periodic discography sweep failed:', e))
         } catch (e) {
           console.error('[walkman] periodic sync failed:', e)
         }

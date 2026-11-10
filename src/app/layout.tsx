@@ -23,6 +23,13 @@ export const metadata: Metadata = {
     description: "Stream in lossless quality for free and import playlists from any music app.",
     siteName: "Walkman",
     type: "website",
+    images: [{ url: "/logo-full.png", width: 1254, height: 1254, alt: "Walkman — Minimal Walkman Wave Logo" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Walkman — Free Hi-Fi Music Streaming",
+    description: "Stream in lossless quality for free and import playlists from any music app.",
+    images: ["/logo-full.png"],
   },
 };
 

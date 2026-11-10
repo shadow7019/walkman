@@ -21,6 +21,7 @@ export interface Track {
   playCount: number
   favoriteCount: number
   permalink: string
+  trackNo?: number
 }
 
 export interface PlaylistSummary {

@@ -1,0 +1,799 @@
+     1→// Catalog engine — merge industry tracks from multiple public sources into the DB.
+     2→// Acts as the "infinite catalog": any search/explore fan-out permanently extends the library.
+     3→//
+     4→// Language coverage: a GLOBAL_SEED matrix sweeps ~50 music scenes across
+     5→// storefronts (IN, KR, JP, TW, HK, MX, BR, FR, DE, IT, …) so the library fills
+     6→// with real songs in every language and genre. 100% real catalog data — no mocks.
+     7→import { db } from '@/lib/db'
+     8→import { canonicalGenre, canonicalMood } from '@/lib/genre'
+     9→import { trending, underground, byGenre, searchTracks, artworkUrl, type AudiusTrack } from '@/lib/audius'
+    10→import { itunesSearch, itunesAlbumSearch, itunesLookupSongs, artwork600, type iTunesTrack, type iTunesAlbum } from '@/lib/itunes'
+    11→import { matchSaavnTrack } from '@/lib/saavn'
+    12→import { ARTIST_ROSTER, type ArtistEntry } from '@/lib/artists'
+    13→import {
+    14→  SPOTIFY_AUTO_PLAYLISTS,
+    15→  SPOTIFY_FLAGSHIP,
+    16→  fetchSpotifyPlaylistData,
+    17→  type SpotifyAutoPlaylist,
+    18→  type SpotifySyncProgress,
+    19→} from '@/lib/spotify'
+    20→
+    21→export interface CatalogUpsert {
+    22→  title: string
+    23→  artist: string
+    24→  album?: string
+    25→  genre?: string
+    26→  rawGenre?: string
+    27→  mood?: string
+    28→  language?: string
+    29→  country?: string
+    30→  year?: number
+    31→  durationMs?: number
+    32→  cover?: string
+    33→  source: string
+    34→  sourceId: string
+    35→  streamUrl?: string
+    36→  previewUrl?: string
+    37→  hasFull?: boolean
+    38→  qualityTier?: string
+    39→  bitrateKbps?: number
+    40→  explicit?: boolean
+    41→  playCount?: number
+    42→  favoriteCount?: number
+    43→  permalink?: string
+    44→  releaseDate?: Date | null
+    45→}
+    46→
+    47→const norm = (s: string) => (s || '').toLowerCase().replace(/\(.*?\)|\[.*?\]/g, '').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+    48→
+    49→// Guess a song's language from its script when no explicit language is known.
+    50→export function detectLanguage(text: string): string {
+    51→  const t = text || ''
+    52→  if (/[\u3040-\u30ff]/.test(t)) return 'Japanese' // kana
+    53→  if (/[\uac00-\ud7af]/.test(t)) return 'Korean' // hangul
+    54→  if (/[\u0900-\u097f]/.test(t)) return 'Hindi' // devanagari
+    55→  if (/[\u0e00-\u0e7f]/.test(t)) return 'Thai'
+    56→  if (/[\u0600-\u06ff]/.test(t)) return 'Arabic'
+    57→  if (/[\u0590-\u05ff]/.test(t)) return 'Hebrew'
+    58→  if (/[\u0400-\u04ff]/.test(t)) return 'Russian' // cyrillic
+    59→  if (/[\u4e00-\u9fff]/.test(t)) return 'Mandarin' // han (approx.)
+    60→  if (/[\u0370-\u03ff]/.test(t)) return 'Greek'
+    61→  if (/[ăâđêôơưăáàảãạấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/i.test(t)) return 'Vietnamese'
+    62→  return ''
+    63→}
+    64→
+    65→// Upsert by (source, sourceId); skip near-duplicates already in DB
+    66→export async function upsertTrack(t: CatalogUpsert): Promise<'added' | 'updated' | 'skipped'> {
+    67→  if (!t.title || !t.artist) return 'skipped'
+    68→  const genre = t.genre || canonicalGenre(t.rawGenre || t.title)
+    69→  const language = t.language || detectLanguage(`${t.title} ${t.artist}`) || 'Unknown'
+    70→  const existing = await db.track.findUnique({
+    71→    where: { source_sourceId: { source: t.source, sourceId: t.sourceId } },
+    72→  })
+    73→  if (existing) {
+    74→    // upgrade record if we now know more (e.g. full stream, language)
+    75→    const patch: Record<string, unknown> = {}
+    76→    if (t.streamUrl && !existing.streamUrl) { patch.streamUrl = t.streamUrl; patch.hasFull = true }
+    77→    if (t.previewUrl && !existing.previewUrl) patch.previewUrl = t.previewUrl
+    78→    if (t.cover && !existing.cover) patch.cover = t.cover
+    79→    if (t.playCount && t.playCount > existing.playCount) patch.playCount = t.playCount
+    80→    if (language !== 'Unknown' && (existing.language === 'Unknown' || existing.language === 'English') && language !== 'English') patch.language = language
+    81→    if (t.country && !existing.country) patch.country = t.country
+    82→    if (Object.keys(patch).length) await db.track.update({ where: { id: existing.id }, data: patch })
+    83→    return 'updated'
+    84→  }
+    85→  // cross-source dedupe: same normalized title+artist already present?
+    86→  const similar = await findSimilar(norm(t.title), norm(t.artist))
+    87→  if (similar) {
+    88→    // prefer keeping the row that has a full stream; enrich the other with the new source's url
+    89→    const patch: Record<string, unknown> = {}
+    90→    if (t.hasFull && !similar.hasFull) {
+    91→      patch.streamUrl = t.streamUrl || ''
+    92→      patch.hasFull = true
+    93→      patch.bitrateKbps = Math.max(similar.bitrateKbps, t.bitrateKbps || 0)
+    94→      patch.qualityTier = 'HI-FI'
+    95→      patch.source = 'audius'
+    96→      patch.sourceId = t.sourceId
+    97→    } else if (!similar.hasFull && t.previewUrl && !similar.previewUrl) {
+    98→      patch.previewUrl = t.previewUrl
+    99→    }
+   100→    if (language !== 'Unknown' && (similar.language === 'Unknown' || similar.language === 'English') && language !== 'English') patch.language = language
+   101→    if (t.country && !similar.country) patch.country = t.country
+   102→    if (t.cover && !similar.cover) patch.cover = t.cover
+   103→    if (Object.keys(patch).length) await db.track.update({ where: { id: similar.id }, data: patch })
+   104→    return 'skipped'
+   105→  }
+   106→  await db.track.create({
+   107→    data: {
+   108→      title: t.title,
+   109→      artist: t.artist,
+   110→      album: t.album || '',
+   111→      genre,
+   112→      rawGenre: t.rawGenre || '',
+   113→      mood: canonicalMood(t.mood || ''),
+   114→      language,
+   115→      country: t.country || '',
+   116→      year: t.year ?? new Date().getFullYear(),
+   117→      durationMs: t.durationMs ?? 0,
+   118→      cover: t.cover || '',
+   119→      source: t.source,
+   120→      sourceId: t.sourceId,
+   121→      streamUrl: t.streamUrl || '',
+   122→      previewUrl: t.previewUrl || '',
+   123→      hasFull: !!t.hasFull,
+   124→      qualityTier: t.qualityTier || 'HQ',
+   125→      bitrateKbps: t.bitrateKbps || 256,
+   126→      explicit: !!t.explicit,
+   127→      playCount: t.playCount ?? 0,
+   128→      favoriteCount: t.favoriteCount ?? 0,
+   129→      permalink: t.permalink || '',
+   130→      releaseDate: t.releaseDate ?? null,
+   131→    },
+   132→  })
+   133→  return 'added'
+   134→}
+   135→
+   136→async function findSimilar(titleNorm: string, artistNorm: string) {
+   137→  const candidates = await db.track.findMany({
+   138→    where: {
+   139→      OR: [{ title: { contains: titleNorm.slice(0, 24) } }],
+   140→    },
+   141→    take: 12,
+   142→  })
+   143→  return candidates.find((c) => norm(c.title) === titleNorm && norm(c.artist) === artistNorm) ?? null
+   144→}
+   145→
+   146→// --- Adapters from source payloads to CatalogUpsert ---
+   147→
+   148→export function audiusToUpsert(t: AudiusTrack): CatalogUpsert {
+   149→  const title = t.title.replace(/\s*[-–]\s*(Official\s+)?(Music\s+)?Video$/i, '').trim()
+   150→  return {
+   151→    title,
+   152→    artist: t.user?.name || t.user?.handle || 'Unknown Artist',
+   153→    album: '',
+   154→    rawGenre: t.genre || '',
+   155→    mood: t.mood || '',
+   156→    durationMs: (t.duration || 0) * 1000,
+   157→    cover: artworkUrl(t),
+   158→    source: 'audius',
+   159→    sourceId: t.id,
+   160→    streamUrl: `https://discoveryprovider.audius.co/v1/tracks/${t.id}/stream?app_name=Walkman`,
+   161→    hasFull: true,
+   162→    qualityTier: 'HI-FI',
+   163→    bitrateKbps: 320,
+   164→    playCount: t.play_count || 0,
+   165→    favoriteCount: t.favorite_count || 0,
+   166→    permalink: t.permalink ? `https://audius.co${t.permalink}` : '',
+   167→    releaseDate: t.release_date ? new Date(t.release_date) : null,
+   168→    year: t.release_date ? new Date(t.release_date).getFullYear() : undefined,
+   169→  }
+   170→}
+   171→
+   172→export function itunesToUpsert(t: iTunesTrack, language?: string, country?: string, genre?: string): CatalogUpsert {
+   173→  const d = t.releaseDate ? new Date(t.releaseDate) : null
+   174→  return {
+   175→    title: t.trackName,
+   176→    artist: t.artistName,
+   177→    album: t.collectionName || '',
+   178→    genre,
+   179→    rawGenre: t.primaryGenreName || '',
+   180→    language,
+   181→    country,
+   182→    durationMs: t.trackTimeMillis || 0,
+   183→    cover: artwork600(t),
+   184→    source: 'itunes',
+   185→    sourceId: String(t.trackId),
+   186→    previewUrl: t.previewUrl || '',
+   187→    hasFull: false,
+   188→    qualityTier: 'HQ',
+   189→    bitrateKbps: 256,
+   190→    explicit: t.trackExplicitness === 'explicit',
+   191→    permalink: t.trackViewUrl || '',
+   192→    releaseDate: d,
+   193→    year: d ? d.getFullYear() : undefined,
+   194→  }
+   195→}
+   196→
+   197→// --- The global seed matrix: every language, every genre ---
+   198→// Each entry sweeps one music scene via the iTunes storefront that speaks it.
+   199→export interface SeedEntry {
+   200→  term: string
+   201→  country?: string
+   202→  language: string
+   203→  genre?: string
+   204→  attribute?: string
+   205→  limit?: number
+   206→}
+   207→
+   208→export const GLOBAL_SEED: SeedEntry[] = [
+   209→  // ── English — every major genre (US storefront) ──
+   210→  { term: 'pop', language: 'English', genre: 'Pop', attribute: 'genreTerm', limit: 60 },
+   211→  { term: 'rock', language: 'English', genre: 'Rock', attribute: 'genreTerm', limit: 60 },
+   212→  { term: 'hip hop', language: 'English', genre: 'Hip-Hop', attribute: 'genreTerm', limit: 60 },
+   213→  { term: 'electronic', language: 'English', genre: 'Electronic', attribute: 'genreTerm', limit: 60 },
+   214→  { term: 'r&b soul', language: 'English', genre: 'R&B', attribute: 'genreTerm', limit: 50 },
+   215→  { term: 'jazz', language: 'English', genre: 'Jazz', attribute: 'genreTerm', limit: 50 },
+   216→  { term: 'classical', language: 'English', genre: 'Classical', attribute: 'genreTerm', limit: 50 },
+   217→  { term: 'country', language: 'English', genre: 'Country', attribute: 'genreTerm', limit: 50 },
+   218→  { term: 'metal', language: 'English', genre: 'Metal', attribute: 'genreTerm', limit: 50 },
+   219→  { term: 'reggae', language: 'English', genre: 'Reggae', attribute: 'genreTerm', limit: 40 },
+   220→  { term: 'folk acoustic', language: 'English', genre: 'Folk', limit: 40 },
+   221→  { term: 'blues', language: 'English', genre: 'Blues', attribute: 'genreTerm', limit: 40 },
+   222→  { term: 'indie alternative', language: 'English', genre: 'Indie', limit: 50 },
+   223→  { term: 'soul funk', language: 'English', genre: 'Funk', limit: 40 },
+   224→  { term: 'soundtrack', language: 'English', genre: 'Soundtrack', attribute: 'genreTerm', limit: 40 },
+   225→  // ── South Asia ──
+   226→  { term: 'bollywood', country: 'IN', language: 'Hindi', genre: 'Bollywood', limit: 60 },
+   227→  { term: 'punjabi hits', country: 'IN', language: 'Punjabi', genre: 'Pop', limit: 50 },
+   228→  { term: 'tamil hits', country: 'IN', language: 'Tamil', genre: 'Pop', limit: 50 },
+   229→  { term: 'telugu hits', country: 'IN', language: 'Telugu', genre: 'Pop', limit: 50 },
+   230→  // ── East Asia ──
+   231→  { term: 'k-pop', country: 'KR', language: 'Korean', genre: 'K-Pop', limit: 60 },
+   232→  { term: 'j-pop', country: 'JP', language: 'Japanese', genre: 'Pop', limit: 60 },
+   233→  { term: 'anime', country: 'JP', language: 'Japanese', genre: 'Anime', limit: 50 },
+   234→  { term: 'mandopop', country: 'TW', language: 'Mandarin', genre: 'Pop', limit: 50 },
+   235→  { term: 'cantopop', country: 'HK', language: 'Cantonese', genre: 'Pop', limit: 40 },
+   236→  // ── Latin world ──
+   237→  { term: 'reggaeton', country: 'MX', language: 'Spanish', genre: 'Latin', limit: 60 },
+   238→  { term: 'banda mexicana', country: 'MX', language: 'Spanish', genre: 'Latin', limit: 40 },
+   239→  { term: 'flamenco', country: 'ES', language: 'Spanish', genre: 'Folk', limit: 40 },
+   240→  { term: 'pop español', country: 'ES', language: 'Spanish', genre: 'Pop', limit: 40 },
+   241→  { term: 'sertanejo', country: 'BR', language: 'Portuguese', genre: 'Pop', limit: 50 },
+   242→  { term: 'bossa nova', country: 'BR', language: 'Portuguese', genre: 'Jazz', limit: 40 },
+   243→  // ── Europe ──
+   244→  { term: 'chanson française', country: 'FR', language: 'French', genre: 'Pop', limit: 50 },
+   245→  { term: 'rap français', country: 'FR', language: 'French', genre: 'Hip-Hop', limit: 50 },
+   246→  { term: 'deutschrap', country: 'DE', language: 'German', genre: 'Hip-Hop', limit: 50 },
+   247→  { term: 'deutscher pop', country: 'DE', language: 'German', genre: 'Pop', limit: 40 },
+   248→  { term: 'pop italiana', country: 'IT', language: 'Italian', genre: 'Pop', limit: 50 },
+   249→  { term: 'nederlandstalig', country: 'NL', language: 'Dutch', genre: 'Pop', limit: 40 },
+   250→  { term: 'polski pop', country: 'PL', language: 'Polish', genre: 'Pop', limit: 40 },
+   251→  { term: 'svensk pop', country: 'SE', language: 'Swedish', genre: 'Pop', limit: 40 },
+   252→  { term: 'greek pop', country: 'GR', language: 'Greek', genre: 'Pop', limit: 40 },
+   253→  { term: 'türkçe pop', country: 'TR', language: 'Turkish', genre: 'Pop', limit: 50 },
+   254→  { term: 'russian pop', country: 'RU', language: 'Russian', genre: 'Pop', limit: 50 },
+   255→  { term: 'ukrainian pop', country: 'UA', language: 'Ukrainian', genre: 'Pop', limit: 40 },
+   256→  { term: 'magyar pop', country: 'HU', language: 'Hungarian', genre: 'Pop', limit: 40 },
+   257→  { term: 'muzica romaneasca', country: 'RO', language: 'Romanian', genre: 'Pop', limit: 40 },
+   258→  { term: 'irish folk', country: 'IE', language: 'Irish', genre: 'Folk', limit: 40 },
+   259→  { term: 'fado', country: 'PT', language: 'Portuguese', genre: 'Folk', limit: 40 },
+   260→  // ── Africa & Middle East ──
+   261→  { term: 'afrobeats', country: 'NG', language: 'English', genre: 'Afrobeats', limit: 60 },
+   262→  { term: 'amapiano', country: 'ZA', language: 'Zulu', genre: 'Afrobeats', limit: 50 },
+   263→  { term: 'bongo flava', country: 'TZ', language: 'Swahili', genre: 'Afrobeats', limit: 40 },
+   264→  { term: 'arabic pop', country: 'EG', language: 'Arabic', genre: 'Pop', limit: 50 },
+   265→  { term: 'israeli pop', country: 'IL', language: 'Hebrew', genre: 'Pop', limit: 40 },
+   266→  { term: 'persian pop', language: 'Persian', genre: 'Pop', limit: 40 },
+   267→  // ── Southeast Asia ──
+   268→  { term: 'v-pop', country: 'VN', language: 'Vietnamese', genre: 'Pop', limit: 40 },
+   269→  { term: 'thai pop', country: 'TH', language: 'Thai', genre: 'Pop', limit: 40 },
+   270→  { term: 'indonesian pop', country: 'ID', language: 'Indonesian', genre: 'Pop', limit: 40 },
+   271→  { term: 'opm', country: 'PH', language: 'Filipino', genre: 'Pop', limit: 40 },
+   272→]
+   273→
+   274→const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+   275→
+   276→// Sweep the whole matrix. Resumable + gentle on rate limits.
+   277→export async function globalSeed(onProgress?: (done: number, total: number, added: number) => void): Promise<{ added: number; scanned: number }> {
+   278→  let added = 0
+   279→  const total = GLOBAL_SEED.length
+   280→  for (let i = 0; i < total; i++) {
+   281→    const e = GLOBAL_SEED[i]
+   282→    try {
+   283→      const results = await itunesSearch({ term: e.term, country: e.country, attribute: e.attribute, limit: e.limit ?? 50 })
+   284→      for (const t of results) {
+   285→        const r = await upsertTrack(itunesToUpsert(t, e.language, e.country ?? 'US'))
+   286→        if (r === 'added') added++
+   287→      }
+   288→      await db.syncLog.create({ data: { source: 'itunes', scope: `${e.language}:${e.term}`, fetched: results.length, added, updated: 0 } }).catch(() => {})
+   289→    } catch {
+   290→      // rate-limited or transient — back off a little, keep going
+   291→      await sleep(2500)
+   292→    }
+   293→    onProgress?.(i + 1, total, added)
+   294→    await sleep(350) // stay under Apple's rate limit
+   295→  }
+   296→  return { added, scanned: total }
+   297→}
+   298→
+   299→// --- Artist sweep: pull every major band/artist's songs into the library ---
+   300→
+   301→// Strip accents + lowercase for fuzzy artist-name matching
+   302→const fold = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+   303→
+   304→// Keep only tracks actually by the requested act (term search also matches song titles)
+   305→const foldTokens = (name: string): string[] =>
+   306→  fold(name).split(/[^a-z0-9]+/).filter((t) => t.length > 1)
+   307→
+   308→// Loose artist-name match: every significant token must appear in the target name
+   309→function nameMatches(artistName: string, target: string): boolean {
+   310→  const tokens = foldTokens(artistName)
+   311→  if (!tokens.length) return true
+   312→  const tn = fold(target)
+   313→  return tokens.every((tok) => tn.includes(tok))
+   314→}
+   315→
+   316→function byThisArtist(artistName: string, results: iTunesTrack[]): iTunesTrack[] {
+   317→  return results.filter((t) => nameMatches(artistName, t.artistName))
+   318→}
+   319→
+   320→export interface SweepProgress {
+   321→  running: boolean
+   322→  done: number
+   323→  total: number
+   324→  added: number
+   325→  current: string
+   326→}
+   327→
+   328→// Sweep the whole artist roster. Resumable: completed artists are logged in
+   329→// SyncLog (source='artist-sweep') and skipped on re-runs. Fast-dedupes via an
+   330→// in-memory set of existing (title|artist) keys to avoid per-row LIKE scans.
+   331→export async function sweepArtists(onProgress?: (p: SweepProgress) => void, roster: ArtistEntry[] = ARTIST_ROSTER): Promise<{ added: number; scanned: number; skippedArtists: number }> {
+   332→  let added = 0
+   333→  let skippedArtists = 0
+   334→  const total = roster.length
+   335→
+   336→  // resume: skip acts already swept in a previous run
+   337→  const doneScopes = new Set(
+   338→    (await db.syncLog.findMany({ where: { source: 'artist-sweep' }, select: { scope: true } })).map((l) => l.scope),
+   339→  )
+   340→
+   341→  // preload known (title|artist) keys once — O(1) dedupe for every row
+   342→  const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+   343→  const keys = new Set<string>()
+   344→  for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+   345→
+   346→  for (let i = 0; i < total; i++) {
+   347→    const a = roster[i]
+   348→    if (doneScopes.has(a.name)) {
+   349→      skippedArtists++
+   350→      onProgress?.({ running: true, done: i + 1, total, added, current: a.name })
+   351→      continue
+   352→    }
+   353→    try {
+   354→      const raw = await itunesSearch({ term: a.name, country: a.country, limit: a.limit })
+   355→      const results = byThisArtist(a.name, raw)
+   356→      let artistAdded = 0
+   357→      for (const t of results) {
+   358→        const key = `${norm(t.trackName)}|${norm(t.artistName)}`
+   359→        if (keys.has(key)) continue
+   360→        keys.add(key)
+   361→        const r = await upsertTrack(itunesToUpsert(t, a.language, a.country, a.genre))
+   362→        if (r === 'added') artistAdded++
+   363→      }
+   364→      added += artistAdded
+   365→      await db.syncLog.create({ data: { source: 'artist-sweep', scope: a.name, fetched: results.length, added: artistAdded, updated: 0, detail: a.genre } })
+   366→      onProgress?.({ running: true, done: i + 1, total, added, current: a.name })
+   367→    } catch {
+   368→      // rate-limited or transient — back off; do NOT mark done so the next run retries
+   369→      await sleep(2500)
+   370→      continue
+   371→    }
+   372→    await sleep(350) // stay under Apple's rate limit
+   373→  }
+   374→  onProgress?.({ running: false, done: total, total, added, current: '' })
+   375→  return { added, scanned: total, skippedArtists }
+   376→}
+   377→
+   378→// --- Spotify auto-add: official charts & editorial playlists → real library tracks ---
+   379→
+   380→export type { SpotifySyncProgress }
+   381→
+   382→// Try to find the exact song in the iTunes industry catalog (cover art, 256 kbps
+   383→// preview, year, genre). Accepts only confident matches.
+   384→async function itunesMatchTrack(title: string, artist: string): Promise<iTunesTrack | null> {
+   385→  const query = `${title} ${artist}`.trim()
+   386→  try {
+   387→    const results = await itunesSearch({ term: query, limit: 5 })
+   388→    const nt = norm(title)
+   389→    const na = norm(artist)
+   390→    for (const t of results) {
+   391→      if (norm(t.trackName) === nt && (!na || norm(t.artistName).includes(na) || na.includes(norm(t.artistName)))) return t
+   392→    }
+   393→    // second pass: exact title + matching lead artist word
+   394→    for (const t of results) {
+   395→      if (norm(t.trackName) === nt) return t
+   396→    }
+   397→  } catch { /* transient */ }
+   398→  return null
+   399→}
+   400→
+   401→// Sweep Spotify playlists into the library. Resumable: a playlist swept in the
+   402→// last 4h is skipped (charts refresh daily) unless `force`.
+   403→export async function spotifySync(
+   404→  onProgress?: (p: SpotifySyncProgress) => void,
+   405→  playlists: SpotifyAutoPlaylist[] = SPOTIFY_AUTO_PLAYLISTS,
+   406→  opts: { force?: boolean } = {},
+   407→): Promise<{ added: number; scanned: number; skippedPlaylists: number }> {
+   408→  let added = 0
+   409→  let skippedPlaylists = 0
+   410→  const total = playlists.length
+   411→
+   412→  // resume: playlists swept very recently are skipped unless forced
+   413→  const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000)
+   414→  const recent = opts.force ? new Set<string>() : new Set(
+   415→    (
+   416→      await db.syncLog.findMany({
+   417→        where: { source: 'spotify-sync', syncedAt: { gte: fourHoursAgo } },
+   418→        select: { scope: true },
+   419→      })
+   420→    ).map((l) => l.scope),
+   421→  )
+   422→
+   423→  // preload known (title|artist) keys — O(1) dedupe, skips unneeded iTunes calls
+   424→  const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+   425→  const keys = new Set<string>()
+   426→  for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+   427→
+   428→  for (let i = 0; i < total; i++) {
+   429→    const pl = playlists[i]
+   430→    if (recent.has(pl.id) || recent.has(pl.label)) {
+   431→      skippedPlaylists++
+   432→      onProgress?.({ running: true, done: i + 1, total, added, current: pl.label })
+   433→      continue
+   434→    }
+   435→    try {
+   436→      const data = await fetchSpotifyPlaylistData(pl.id)
+   437→      let playlistAdded = 0
+   438→      for (const e of data.tracks) {
+   439→        const key = `${norm(e.title)}|${norm(e.artist)}`
+   440→        if (keys.has(key)) continue
+   441→        // 1) prefer the iTunes industry row: cover art, year, 256 kbps preview
+   442→        const match = await itunesMatchTrack(e.title, e.artist)
+   443→        if (match) {
+   444→          keys.add(`${norm(match.trackName)}|${norm(match.artistName)}`)
+   445→          const r = await upsertTrack(itunesToUpsert(match, pl.language, pl.country, pl.genre))
+   446→          if (r === 'added') playlistAdded++
+   447→          continue
+   448→        }
+   449→        // 2) fallback: add the Spotify row itself (title/artist/preview are real)
+   450→        if (!e.previewUrl && !e.artist) continue
+   451→        keys.add(key)
+   452→        const r = await upsertTrack({
+   453→          title: e.title,
+   454→          artist: e.artist || 'Unknown Artist',
+   455→          genre: pl.genre,
+   456→          language: pl.language,
+   457→          country: pl.country,
+   458→          durationMs: e.durationMs,
+   459→          source: 'spotify',
+   460→          sourceId: e.trackId,
+   461→          streamUrl: e.previewUrl,
+   462→          hasFull: false,
+   463→          qualityTier: 'HQ',
+   464→          bitrateKbps: 96,
+   465→        })
+   466→        if (r === 'added') playlistAdded++
+   467→      }
+   468→      added += playlistAdded
+   469→      await db.syncLog.create({ data: { source: 'spotify-sync', scope: pl.id, fetched: data.tracks.length, added: playlistAdded, updated: 0, detail: pl.label } })
+   470→      onProgress?.({ running: true, done: i + 1, total, added, current: pl.label })
+   471→    } catch {
+   472→      // transient / playlist unavailable — back off, retry next run
+   473→      await sleep(2500)
+   474→      continue
+   475→    }
+   476→    await sleep(600)
+   477→  }
+   478→  onProgress?.({ running: false, done: total, total, added, current: '' })
+   479→  return { added, scanned: total, skippedPlaylists }
+   480→}
+   481→
+   482→// --- Deep discography crawl: EVERY album, EVERY song for under-covered artists ---
+   483→// iTunes song-search only surfaces scattered hits; many artists end up with a
+   484→// single track. This pass walks their full album list and pulls complete
+   485→// tracklists, so acts like The Neighbourhood get their whole discography.
+   486→
+   487→export interface DeepSweepProgress {
+   488→  running: boolean
+   489→  done: number
+   490→  total: number
+   491→  added: number
+   492→  current: string
+   493→}
+   494→
+   495→// Crawl one artist's complete discography: album search → per-album song lookup.
+   496→// Returns the number of songs added. Pass `keySet` (from deepArtistsSync) to
+   497→// reuse a preloaded dedupe index instead of reloading the library per artist.
+   498→export async function deepCrawlArtist(
+   499→  name: string,
+   500→  opts: { maxAlbums?: number; country?: string; genre?: string; language?: string; keySet?: Set<string> } = {},
+   501→): Promise<number> {
+   502→  const maxAlbums = opts.maxAlbums ?? 50
+   503→  const albumsRaw = await itunesAlbumSearch({ term: name, attribute: 'artistTerm', country: opts.country, limit: 200 })
+   504→  // keep albums actually credited to this act, newest first
+   505→  const albums = albumsRaw
+   506→    .filter((a: iTunesAlbum) => nameMatches(name, a.artistName))
+   507→    .sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+   508→    .slice(0, maxAlbums)
+   509→
+   510→  // dedupe index: reuse the caller's, or load a fresh one for a single crawl
+   511→  const keys = opts.keySet ?? new Set<string>()
+   512→  if (!opts.keySet) {
+   513→    const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+   514→    for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+   515→  }
+   516→
+   517→  let added = 0
+   518→  for (const album of albums) {
+   519→    try {
+   520→      const songs = await itunesLookupSongs(album.collectionId, 200)
+   521→      const mine = songs.filter((t) => nameMatches(name, t.artistName))
+   522→      for (const t of mine) {
+   523→        const key = `${norm(t.trackName)}|${norm(t.artistName)}`
+   524→        if (keys.has(key)) continue
+   525→        keys.add(key)
+   526→        const r = await upsertTrack(
+   527→          itunesToUpsert(t, opts.language, opts.country, opts.genre ?? album.primaryGenreName),
+   528→        )
+   529→        if (r === 'added') added++
+   530→      }
+   531→    } catch {
+   532→      await sleep(2500) // rate-limited — back off, try next album
+   533→    }
+   534→    await sleep(350)
+   535→  }
+   536→  await db.syncLog.create({
+   537→    data: { source: 'artist-deep', scope: name, fetched: albums.length, added, updated: 0, detail: opts.genre ?? '' },
+   538→  }).catch(() => {})
+   539→  return added
+   540→}
+   541→
+   542→// Deep-crawl every under-covered artist (≤ maxSongs tracks), oldest-thinnest
+   543→// first. Resumable: artists already crawled (SyncLog source='artist-deep') are
+   544→// skipped on re-runs. Known roster acts get their language/country/genre hints.
+   545→export async function deepArtistsSync(
+   546→  onProgress?: (p: DeepSweepProgress) => void,
+   547→  opts: { maxSongs?: number; maxAlbums?: number } = {},
+   548→): Promise<{ added: number; scanned: number; skippedArtists: number }> {
+   549→  const maxSongs = opts.maxSongs ?? 3
+   550→  const maxAlbums = opts.maxAlbums ?? 50
+   551→
+   552→  // under-covered artists, thinnest first
+   553→  const groups = await db.track.groupBy({ by: ['artist'], _count: { _all: true } })
+   554→  const thin = groups
+   555→    .filter((g) => g._count._all <= maxSongs)
+   556→    .sort((a, b) => a._count._all - b._count._all)
+   557→    .map((g) => g.artist)
+   558→
+   559→  // resume: acts already deep-crawled in a previous run
+   560→  const doneScopes = new Set(
+   561→    (await db.syncLog.findMany({ where: { source: 'artist-deep' }, select: { scope: true } })).map((l) => l.scope),
+   562→  )
+   563→
+   564→  // roster hints by folded name
+   565→  const rosterHints = new Map<string, ArtistEntry>()
+   566→  for (const r of ARTIST_ROSTER) rosterHints.set(fold(r.name), r)
+   567→
+   568→  // preload the dedupe index once for the whole run
+   569→  const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+   570→  const keys = new Set<string>()
+   571→  for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+   572→
+   573→  let added = 0
+   574→  let skippedArtists = 0
+   575→  const total = thin.length
+   576→  for (let i = 0; i < total; i++) {
+   577→    const name = thin[i]
+   578→    if (doneScopes.has(name)) {
+   579→      skippedArtists++
+   580→      onProgress?.({ running: true, done: i + 1, total, added, current: name })
+   581→      continue
+   582→    }
+   583→    try {
+   584→      const hint = rosterHints.get(fold(name))
+   585→      const a = await deepCrawlArtist(name, {
+   586→        maxAlbums,
+   587→        country: hint?.country,
+   588→        genre: hint?.genre,
+   589→        language: hint?.language,
+   590→        keySet: keys,
+   591→      })
+   592→      added += a
+   593→    } catch {
+   594→      await sleep(2500)
+   595→      continue // not marked done — retried next run
+   596→    }
+   597→    onProgress?.({ running: true, done: i + 1, total, added, current: name })
+   598→    await sleep(350)
+   599→  }
+   600→  onProgress?.({ running: false, done: total, total, added, current: '' })
+   601→  return { added, scanned: total, skippedArtists }
+   602→}
+   603→
+   604→// --- Full-song enrichment: upgrade 30s previews to full-length streams ---
+   605→// Sources tried per track (in order): Audius (320 kbps full), JioSaavn
+   606→// (official 320 kbps full, strict artist match). Previews stay as fallback.
+   607→
+   608→export interface FullSweepProgress {
+   609→  running: boolean
+   610→  done: number
+   611→  total: number
+   612→  added: number
+   613→  current: string
+   614→}
+   615→
+   616→export type FullEnrichResult = 'full' | 'already' | 'none'
+   617→
+   618→// Try to attach a full-length stream to one track. Persists the upgrade.
+   619→// Audius and JioSaavn are probed in parallel; Audius wins ties (open full-length).
+   620→export async function enrichTrackFull(trackId: string): Promise<FullEnrichResult> {
+   621→  const track = await db.track.findUnique({ where: { id: trackId } })
+   622→  if (!track) return 'none'
+   623→  if (track.hasFull && track.streamUrl) return 'already'
+   624→
+   625→  const audiusProbe = (async (): Promise<string | null> => {
+   626→    try {
+   627→      const au: AudiusTrack[] = await searchTracks(`${track.title} ${track.artist}`, 6)
+   628→      for (const t of au) {
+   629→        const name = t.user?.name ?? ''
+   630→        const nt = norm(track.title)
+   631→        const na = norm(track.artist)
+   632→        const ok = norm(t.title) === nt && (!na || norm(name).includes(na) || na.includes(norm(name)))
+   633→        if (ok && t.duration && Math.abs(t.duration * 1000 - track.durationMs) < Math.max(15000, track.durationMs * 0.25)) {
+   634→          return `https://discoveryprovider.audius.co/v1/tracks/${t.id}/stream?app_name=Walkman`
+   635→        }
+   636→      }
+   637→    } catch (e) { console.warn('[enrich] audius probe error:', (e as Error)?.message) }
+   638→    return null
+   639→  })()
+   640→
+   641→  const saavnProbe = (async (): Promise<{ url: string; image: string; album: string; year?: number } | null> => {
+   642→    try {
+   643→      const s = await matchSaavnTrack(track.title, track.artist)
+   644→      if (!s) return null
+   645→      // duration sanity: official track lengths should roughly agree
+   646→      const durOk = !s.durationSec || !track.durationMs || Math.abs(s.durationSec * 1000 - track.durationMs) < Math.max(20000, track.durationMs * 0.3)
+   647→      if (!durOk) console.warn('[enrich] saavn duration mismatch:', track.title, s.durationSec, track.durationMs)
+   648→      if (durOk) return { url: s.fullUrl320, image: s.image, album: s.album, year: s.year }
+   649→    } catch (e) { console.warn('[enrich] saavn probe error:', (e as Error)?.message) }
+   650→    return null
+   651→  })()
+   652→
+   653→  const [auUrl, sv] = await Promise.all([audiusProbe, saavnProbe])
+   654→  if (auUrl) {
+   655→    await db.track.update({
+   656→      where: { id: track.id },
+   657→      data: { streamUrl: auUrl, hasFull: true, qualityTier: 'HI-FI', bitrateKbps: 320 },
+   658→    })
+   659→    return 'full'
+   660→  }
+   661→  if (sv) {
+   662→    await db.track.update({
+   663→      where: { id: track.id },
+   664→      data: {
+   665→        streamUrl: sv.url,
+   666→        hasFull: true,
+   667→        qualityTier: 'HI-FI',
+   668→        bitrateKbps: 320,
+   669→        cover: track.cover || sv.image,
+   670→        album: track.album || sv.album,
+   671→        year: track.year ?? sv.year,
+   672→      },
+   673→    })
+   674→    return 'full'
+   675→  }
+   676→  return 'none'
+   677→}
+   678→
+   679→// Convert the whole library from previews to full songs. Resumable: the
+   680→// cursor (last processed track id) is stored in SyncLog (source 'fullsongs').
+   681→export async function fullSongsSweep(onProgress?: (p: FullSweepProgress) => void): Promise<{ converted: number; scanned: number }> {
+   682→  let cursorLog = await db.syncLog.findFirst({ where: { source: 'fullsongs', scope: 'cursor' }, orderBy: { syncedAt: 'desc' } })
+   683→  let cursor: string | null = cursorLog?.detail ?? null
+   684→
+   685→  const total = await db.track.count({ where: { hasFull: false } })
+   686→  let converted = 0
+   687→  let scanned = 0
+   688→  const BATCH_LOG = 40
+   689→
+   690→  for (;;) {
+   691→    const rows = await db.track.findMany({
+   692→      where: { hasFull: false, ...(cursor ? { id: { gt: cursor } } : {}) },
+   693→      orderBy: { id: 'asc' },
+   694→      take: 200,
+   695→      select: { id: true, title: true, artist: true },
+   696→    })
+   697→    if (!rows.length) break
+   698→    for (const row of rows) {
+   699→      cursor = row.id
+   700→      scanned++
+   701→      try {
+   702→        const r = await enrichTrackFull(row.id)
+   703→        if (r === 'full') converted++
+   704→      } catch { /* keep going */ }
+   705→      onProgress?.({ running: true, done: scanned, total, added: converted, current: row.artist })
+   706→      await sleep(220) // gentle on upstream APIs
+   707→    }
+   708→    await db.syncLog.create({ data: { source: 'fullsongs', scope: 'cursor', fetched: scanned, added: converted, updated: 0, detail: cursor } }).catch(() => {})
+   709→    if (scanned % (BATCH_LOG * 25) === 0) await sleep(1500)
+   710→  }
+   711→  onProgress?.({ running: false, done: scanned, total, added: converted, current: '' })
+   712→  return { converted, scanned }
+   713→}
+   714→
+   715→// --- Fan-out: extend the catalog from all sources at once ---
+   716→
+   717→export async function fanOutSearch(query: string, limitPerSource = 15): Promise<number> {
+   718→  let added = 0
+   719→  const jobs: Promise<'added' | 'updated' | 'skipped'>[][] = []
+   720→  try {
+   721→    const [au, it, itArtist] = await Promise.allSettled([
+   722→      searchTracks(query, limitPerSource),
+   723→      itunesSearch({ term: query, limit: limitPerSource }),
+   724→      itunesSearch({ term: query, attribute: 'artistTerm', limit: limitPerSource }), // band/artist name match
+   725→    ])
+   726→    if (au.status === 'fulfilled') jobs.push(au.value.map((t) => upsertTrack(audiusToUpsert(t))))
+   727→    if (it.status === 'fulfilled') jobs.push(it.value.map((t) => upsertTrack(itunesToUpsert(t))))
+   728→    if (itArtist.status === 'fulfilled') jobs.push(itArtist.value.map((t) => upsertTrack(itunesToUpsert(t))))
+   729→  } catch { /* best effort */ }
+   730→  const results = (await Promise.allSettled(jobs.flat())).filter((r) => r.status === 'fulfilled' && r.value === 'added')
+   731→  added = results.length
+   732→  return added
+   733→}
+   734→
+   735→export async function fanOutGenre(genre: string, limitPerSource = 30): Promise<number> {
+   736→  let added = 0
+   737→  const upserts: CatalogUpsert[] = []
+   738→  try {
+   739→    const au = await byGenre(genre === 'Hip-Hop' ? 'Hip-Hop/Rap' : genre, limitPerSource)
+   740→    upserts.push(...au.map(audiusToUpsert))
+   741→  } catch { /* best effort */ }
+   742→  try {
+   743→    const it = await itunesSearch({ term: genre, attribute: 'genreTerm', limit: limitPerSource })
+   744→    upserts.push(...it.map((t) => itunesToUpsert(t)))
+   745→  } catch { /* best effort */ }
+   746→  for (const u of upserts) {
+   747→    const r = await upsertTrack(u)
+   748→    if (r === 'added') added++
+   749→  }
+   750→  return added
+   751→}
+   752→
+   753→// --- Auto-sync: keep adding new songs over time (refresh mode) ---
+   754→
+   755→export async function syncCatalog(opts: { trendingLimit?: number; perGenreLimit?: number; genres?: string[]; spotify?: boolean } = {}): Promise<{ added: number; updated: number; logs: { source: string; scope: string; fetched: number; added: number; updated: number }[] }> {
+   756→  const trendingLimit = opts.trendingLimit ?? 50
+   757→  const perGenreLimit = opts.perGenreLimit ?? 20
+   758→  const genres = opts.genres ?? ['Electronic', 'Hip-Hop/Rap', 'Pop', 'R&B/Soul', 'Rock', 'Jazz', 'House', 'Techno', 'Lo-Fi', 'Classical', 'Ambient', 'Metal', 'Latin', 'Country', 'Folk', 'Dubstep']
+   759→  const logs: { source: string; scope: string; fetched: number; added: number; updated: number }[] = []
+   760→  let added = 0
+   761→  let updated = 0
+   762→
+   763→  async function runScope(source: string, scope: string, items: CatalogUpsert[]) {
+   764→    let a = 0
+   765→    let u = 0
+   766→    for (const item of items) {
+   767→      const r = await upsertTrack(item)
+   768→      if (r === 'added') a++
+   769→      else if (r === 'updated') u++
+   770→    }
+   771→    logs.push({ source, scope, fetched: items.length, added: a, updated: u })
+   772→    added += a
+   773→    updated += u
+   774→    await db.syncLog.create({ data: { source, scope, fetched: items.length, added: a, updated: u } })
+   775→  }
+   776→
+   777→  // Audius: trending (this week = "new songs auto-added"), underground
+   778→  try { await runScope('audius', 'trending', (await trending(undefined, trendingLimit)).map(audiusToUpsert)) } catch {}
+   779→  try { await runScope('audius', 'underground', (await underground(30)).map(audiusToUpsert)) } catch {}
+   780→
+   781→  // Audius per-genre + iTunes per-genre fan-out
+   782→  for (const g of genres) {
+   783→    try { await runScope('audius', g, (await byGenre(g, perGenreLimit)).map(audiusToUpsert)) } catch {}
+   784→  }
+   785→  for (const g of ['Pop', 'Hip-Hop', 'Rock', 'Electronic', 'Jazz', 'Classical', 'R&B', 'Country', 'Latin', 'K-Pop', 'Metal', 'Lo-Fi']) {
+   786→    try { await runScope('itunes', g, (await itunesSearch({ term: g, attribute: 'genreTerm', limit: perGenreLimit })).map((t) => itunesToUpsert(t))) } catch {}
+   787→  }
+   788→
+   789→  // Spotify auto-add: flagship charts (Top Songs Global, Today's Top Hits,
+   790→  // New Music Friday, Viva Latino) — the freshest hits, every sync
+   791→  if (opts.spotify) {
+   792→    const sp = await spotifySync(undefined, SPOTIFY_FLAGSHIP)
+   793→    logs.push({ source: 'spotify', scope: 'flagship-charts', fetched: sp.scanned, added: sp.added, updated: 0 })
+   794→    added += sp.added
+   795→  }
+   796→
+   797→  return { added, updated, logs }
+   798→}
+   799→

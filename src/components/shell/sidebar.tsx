@@ -1,6 +1,7 @@
 'use client'
 
-import { Home, Search, Compass, Heart, Clock, BarChart3, Download, ListMusic, Settings, Users, Plus, Music4, Pin } from 'lucide-react'
+import Image from 'next/image'
+import { Home, Search, Compass, Heart, Clock, BarChart3, Download, ListMusic, Settings, Users, Plus, Pin } from 'lucide-react'
 import { useUI } from '@/stores/ui'
 import { useLibrary } from '@/stores/library'
 import { usePins } from '@/stores/pins'
@@ -46,9 +47,14 @@ export function Sidebar() {
           onClick={() => navigate({ name: 'home' })}
           aria-label="Walkman home"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 shadow-lg shadow-emerald-500/20">
-            <Music4 className="h-5 w-5 text-black" aria-hidden />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Walkman logo"
+            width={32}
+            height={32}
+            priority
+            className="h-8 w-8 rounded-lg shadow-lg shadow-black/50"
+          />
           <span className="text-lg font-bold tracking-tight">Walkman</span>
           <span className="ml-auto rounded-full border border-emerald-500/40 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-400">Free</span>
         </button>

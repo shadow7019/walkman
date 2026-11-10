@@ -9,6 +9,7 @@ import { useUI } from '@/stores/ui'
 import { api } from '@/lib/client-api'
 import { TrackList } from '@/components/track-list'
 import { SectionRow } from '@/components/track-list'
+import { Cover } from '@/components/cover'
 import { TrackCard, GenreTile, LanguageTile, SectionHeader } from '@/components/views/cards'
 import { SkeletonRow } from '@/components/views/home-view'
 import { GENRE_COLORS } from '@/lib/genre'
@@ -273,13 +274,21 @@ export function MoodView({ mood }: { mood: string }) {
 export function ArtistView({ artistName }: { artistName: string }) {
   const [tracks, setTracks] = useState<Track[] | null>(null)
   const [related, setRelated] = useState<Track[]>([])
+  const { playQueue } = usePlayer()
+  const { toast } = useUI()
 
   useEffect(() => {
-    api.tracks({ q: artistName, limit: 80, sort: 'plays' }).then((r) => {
-      const q = artistName.toLowerCase()
+    api.tracks({ q: artistName, limit: 200, sort: 'plays' }).then((r) => {
+      const q = artistName.toLowerCase().trim()
       const own = r.tracks.filter((t) => {
-        const a = t.artist.toLowerCase()
-        return a === q || a.includes(q) || q.includes(a)
+        const a = t.artist.toLowerCase().trim()
+        if (a === q) return true
+        // collab credit sharing the exact artist name prefix: "Artist & other", "Artist feat. other", "Artist x other"
+        const rest = a.slice(q.length).trimStart()
+        if (a.startsWith(q) && /^([&x,+\-]|feat|with|vs\b)/.test(rest)) return true
+        // credited under a shorter alias of the same act ("Neighbourhood" → "The Neighbourhood")
+        if (q.includes(a) && a.length > 3) return true
+        return false
       })
       setTracks(own)
       // related: same genres as the artist's most common genre
@@ -298,6 +307,28 @@ export function ArtistView({ artistName }: { artistName: string }) {
 
   const popular = [...tracks].sort((a, b) => (b.hasFull ? 1 : 0) - (a.hasFull ? 1 : 0) || b.playCount - a.playCount)
 
+  // full discography: every album/EP/single the artist has in the catalog
+  const albumMap = new Map<string, Track[]>()
+  for (const t of popular) {
+    const name = t.album?.trim() || 'Singles'
+    if (!albumMap.has(name)) albumMap.set(name, [])
+    albumMap.get(name)!.push(t)
+  }
+  const albums = [...albumMap.entries()]
+    .map(([name, ts]) => ({
+      name,
+      tracks: [...ts].sort((a, b) => (a.trackNo ?? 0) - (b.trackNo ?? 0) || a.title.localeCompare(b.title)),
+      cover: ts.find((t) => t.cover)?.cover ?? '',
+      year: ts.map((t) => t.year).filter(Boolean).sort()[0],
+    }))
+    .sort((a, b) => b.tracks.length - a.tracks.length || (a.year ?? 0) - (b.year ?? 0))
+
+  const playAlbum = (name: string, list: Track[]) => {
+    if (!list.length) return
+    playQueue(list, 0, name)
+    toast(`Playing ${name} — ${list.length} songs`)
+  }
+
   return (
     <div className="pb-4">
       <BackButton />
@@ -311,6 +342,27 @@ export function ArtistView({ artistName }: { artistName: string }) {
       />
       <SectionHeader title="Popular" />
       <TrackList tracks={popular.slice(0, 30)} contextTitle={artistName} showAlbum />
+      {albums.length > 1 && (
+        <div className="mt-8">
+          <SectionHeader title="Discography" />
+          <SectionRow ariaLabel="Albums by artist">
+            {albums.map((al) => (
+              <button
+                key={al.name}
+                onClick={() => playAlbum(al.name, al.tracks)}
+                className="group w-36 shrink-0 rounded-lg p-2 text-left transition-colors hover:bg-white/5"
+                aria-label={`Play album ${al.name} — ${al.tracks.length} songs`}
+              >
+                <Cover src={al.cover} alt={`${al.name} cover`} className="aspect-square w-full rounded-md shadow-lg shadow-black/40" />
+                <div className="mt-2 truncate text-sm font-medium">{al.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {al.year ? `${al.year} · ` : ''}{al.tracks.length} song{al.tracks.length === 1 ? '' : 's'}
+                </div>
+              </button>
+            ))}
+          </SectionRow>
+        </div>
+      )}
       {related.length > 0 && (
         <div className="mt-8">
           <SectionHeader title="Fans also like" />

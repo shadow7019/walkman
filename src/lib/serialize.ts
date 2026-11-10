@@ -38,7 +38,7 @@ export function trackDTO(t: DbTrack): TrackDTO {
     year: t.year, durationMs: t.durationMs,
     cover: t.cover, source: t.source, sourceId: t.sourceId, hasFull: t.hasFull,
     qualityTier: t.qualityTier, bitrateKbps: t.bitrateKbps, explicit: t.explicit,
-    playCount: t.playCount, favoriteCount: t.favoriteCount, permalink: t.permalink,
+    playCount: t.playCount, favoriteCount: t.favoriteCount, permalink: t.permalink, trackNo: t.trackNo,
   }
 }
 

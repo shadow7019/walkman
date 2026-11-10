@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { norm } from '@/lib/normalize'
 import { searchTracks, type AudiusTrack } from '@/lib/audius'
 import { itunesSearch } from '@/lib/itunes'
+import { fetchSpotifyPlaylistData } from '@/lib/spotify'
 
 export interface ParsedSong {
   title: string
@@ -35,31 +36,14 @@ export interface SpotifyFetchResult {
   description: string
 }
 
-interface SpotifyEmbedTrack { name?: string; artist?: string }
-
 export async function fetchSpotifyPlaylist(playlistId: string): Promise<SpotifyFetchResult> {
-  const r = await fetch(`https://open.spotify.com/embed/playlist/${playlistId}`, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-      Accept: 'text/html',
-    },
-    signal: AbortSignal.timeout(15000),
-  })
-  if (!r.ok) throw new Error(`Spotify returned ${r.status}`)
-  const html = await r.text()
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/)
-  if (!m) throw new Error('Could not read Spotify playlist data')
-  const data = JSON.parse(m[1])
-  const entity = data?.props?.pageProps?.state?.data?.entity
-  const trackList: SpotifyEmbedTrack[] = entity?.trackList ?? []
-  const name: string = entity?.name || 'Imported Spotify Playlist'
-  const description: string = entity?.description || ''
-  const songs: ParsedSong[] = []
-  for (const t of trackList) {
-    if (!t?.name) continue
-    songs.push({ title: cleanTitle(t.name), artist: cleanArtist(t.artist ?? ''), originalLine: `${t.artist} - ${t.name}` })
-  }
-  return { songs, name, description }
+  const data = await fetchSpotifyPlaylistData(playlistId)
+  const songs: ParsedSong[] = data.tracks.map((t) => ({
+    title: cleanTitle(t.title),
+    artist: cleanArtist(t.artist),
+    originalLine: `${t.artist} - ${t.title}`,
+  }))
+  return { songs, name: data.name, description: data.description }
 }
 
 export function cleanTitle(raw: string): string {

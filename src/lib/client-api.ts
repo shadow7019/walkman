@@ -13,6 +13,16 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
   return r.json() as Promise<T>
 }
 
+export interface ArtistSweep {
+  running: boolean
+  done: number
+  total: number
+  added: number
+  current: string
+}
+
+export type SpotifySync = ArtistSweep
+
 export const api = {
   // catalog
   tracks: (params: Record<string, string | number> = {}) =>
@@ -49,9 +59,13 @@ export const api = {
   stats: (period: string) => json<ReplayStats>(`/api/stats?period=${period}`),
 
   // sync
-  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; lastSyncedAt: string | null }>('/api/sync'),
+  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; artistCount?: number; lastSyncedAt: string | null; artistSweep?: ArtistSweep; sweptArtists?: number; spotifySync?: SpotifySync; spotifyPlaylists?: number }>('/api/sync'),
   runSync: () =>
     json<{ ok: boolean; added: number; updated: number; total: number }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }),
+  expandArtists: () =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artists' }) }),
+  syncSpotify: () =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'spotify' }) }),
 
   // lyrics / radio / import
   lyrics: (title: string, artist: string, durationSec?: number) =>

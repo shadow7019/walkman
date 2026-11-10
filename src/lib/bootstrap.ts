@@ -1,7 +1,7 @@
 // Bootstrap the catalog on server start + keep it fresh automatically.
 // - fresh DB (< 400 tracks): run the full global sweep (every language & genre)
-// - otherwise: refresh sync (trending/new) when the last run is stale (> 6h)
-// - periodic refresh every 6h → "auto add all the new songs"
+// - otherwise: refresh sync (trending/new + Spotify charts) when stale (> 6h)
+// - periodic refresh every 6h → "auto add all the new songs" (Audius, iTunes, Spotify)
 import { db } from '@/lib/db'
 
 const g = globalThis as unknown as {
@@ -30,10 +30,15 @@ export async function ensureCatalog(): Promise<void> {
     }
 
     if (stale) {
-      const { syncCatalog } = await import('@/lib/catalog')
+      const { syncCatalog, spotifySync } = await import('@/lib/catalog')
+      const { SPOTIFY_AUTO_PLAYLISTS } = await import('@/lib/spotify')
       console.log('[walkman] refreshing catalog (auto-add new songs)')
       const r = await syncCatalog({ trendingLimit: 60, perGenreLimit: 20 })
       console.log(`[walkman] refresh done: +${r.added} added, ${r.updated} updated`)
+      // Spotify auto-add — pull the freshest charts & editorial playlists
+      void spotifySync(undefined, SPOTIFY_AUTO_PLAYLISTS)
+        .then((sp) => console.log(`[walkman] spotify auto-add: +${sp.added} songs`))
+        .catch((e) => console.error('[walkman] spotify auto-add failed:', e))
     }
   } catch (e) {
     console.error('[walkman] ensureCatalog failed:', e)
@@ -44,9 +49,14 @@ export async function ensureCatalog(): Promise<void> {
     g.__walkmanFreshTimer = setInterval(() => {
       void (async () => {
         try {
-          const { syncCatalog } = await import('@/lib/catalog')
+          const { syncCatalog, spotifySync } = await import('@/lib/catalog')
+          const { SPOTIFY_AUTO_PLAYLISTS } = await import('@/lib/spotify')
           const r = await syncCatalog({ trendingLimit: 60, perGenreLimit: 20 })
           console.log(`[walkman] periodic sync: +${r.added} added, ${r.updated} updated`)
+          // Spotify auto-add every cycle — charts refresh daily
+          await spotifySync(undefined, SPOTIFY_AUTO_PLAYLISTS)
+            .then((sp) => console.log(`[walkman] periodic spotify sync: +${sp.added} songs`))
+            .catch((e) => console.error('[walkman] periodic spotify sync failed:', e))
         } catch (e) {
           console.error('[walkman] periodic sync failed:', e)
         }

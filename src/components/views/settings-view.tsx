@@ -5,19 +5,26 @@
 import { useEffect, useState } from 'react'
 import { usePlayer } from '@/stores/player'
 import { useUI } from '@/stores/ui'
-import { api } from '@/lib/client-api'
+import { api, type ArtistSweep } from '@/lib/client-api'
+import type { SpotifySync } from '@/lib/client-api'
 import { EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal, Users, Music2 } from 'lucide-react'
 
 interface SyncStatus {
   logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]
   total: number
+  artistCount?: number
   lastSyncedAt: string | null
+  artistSweep?: ArtistSweep
+  sweptArtists?: number
+  spotifySync?: SpotifySync
+  spotifyPlaylists?: number
 }
 
 export function SettingsView() {
@@ -26,11 +33,52 @@ export function SettingsView() {
   const [sync, setSync] = useState<SyncStatus | null>(null)
   const [genres, setGenres] = useState<{ total: number; fullLength: number } | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [expanding, setExpanding] = useState(false)
+  const [spotifySyncing, setSpotifySyncing] = useState(false)
 
   useEffect(() => {
     api.syncStatus().then(setSync).catch(() => {})
     api.genres().then((g) => setGenres({ total: g.total, fullLength: g.fullLength })).catch(() => {})
   }, [])
+
+  // live-poll while the artist & band sweep or the Spotify charts sync runs
+  const sweep = sync?.artistSweep
+  const spSync = sync?.spotifySync
+  useEffect(() => {
+    if (!sweep?.running && !spSync?.running) return
+    const t = setInterval(() => {
+      api.syncStatus().then(setSync).catch(() => {})
+    }, 2500)
+    return () => clearInterval(t)
+  }, [sweep?.running, spSync?.running])
+
+  const syncSpotifyCharts = async () => {
+    setSpotifySyncing(true)
+    try {
+      await api.syncSpotify()
+      toast('Syncing Spotify\u2019s official charts — new hits land in the library as it runs')
+      const s = await api.syncStatus()
+      setSync(s)
+    } catch {
+      toast('Could not start the Spotify sync — try again')
+    } finally {
+      setSpotifySyncing(false)
+    }
+  }
+
+  const expandArtists = async () => {
+    setExpanding(true)
+    try {
+      await api.expandArtists()
+      toast('Sweeping the world\'s bands & artists — the library fills as it runs')
+      const s = await api.syncStatus()
+      setSync(s)
+    } catch {
+      toast('Could not start the sweep — try again')
+    } finally {
+      setExpanding(false)
+    }
+  }
 
   const runSync = async () => {
     setSyncing(true)
@@ -216,7 +264,7 @@ export function SettingsView() {
           <Database className="h-4 w-4" aria-hidden /> Catalog sync
         </h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Walkman auto-adds new songs from the industry catalog (Audius + iTunes) every few hours. You can sync now too.
+          Walkman auto-adds new songs from the industry catalog (Audius + iTunes + Spotify charts) every few hours. You can sync now too.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={runSync} disabled={syncing} className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400">
@@ -225,9 +273,67 @@ export function SettingsView() {
           </Button>
           {sync && (
             <p className="text-xs text-muted-foreground">
-              {sync.total.toLocaleString()} tracks · last synced{' '}
+              {sync.total.toLocaleString()} tracks · {sync.artistCount?.toLocaleString() ?? '—'} artists · last synced{' '}
               {sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : 'never'}
             </p>
+          )}
+        </div>
+
+        {/* Spotify auto-add — official charts & editorial playlists */}
+        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={syncSpotifyCharts}
+              disabled={spotifySyncing || !!spSync?.running}
+              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            >
+              {spSync?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Music2 className="h-4 w-4" aria-hidden />}
+              {spSync?.running ? 'Syncing Spotify…' : 'Sync Spotify charts'}
+            </Button>
+            {sync?.spotifyPlaylists ? (
+              <p className="text-xs text-muted-foreground">{sync.spotifyPlaylists} official playlists tracked</p>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Auto-adds Spotify’s official charts &amp; editorial playlists — Top Songs Global, Today’s Top Hits, RapCaviar, Viva Latino, K-Pop ON!, mint, New Music Friday and more. Charts refresh daily, so every sync brings the newest hits.
+          </p>
+          {spSync?.running && spSync.total > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <Progress value={(spSync.done / spSync.total) * 100} className="h-2" aria-label="Spotify sync progress" />
+              <p className="text-xs text-emerald-400" aria-live="polite">
+                {spSync.done}/{spSync.total} playlists · +{spSync.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+                {spSync.current ? ` · now: ${spSync.current}` : ''}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Artist & band expansion — every major act, every genre */}
+        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={expandArtists}
+              disabled={expanding || !!sweep?.running}
+              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            >
+              {sweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Users className="h-4 w-4" aria-hidden />}
+              {sweep?.running ? 'Sweeping…' : 'Add all bands & artists'}
+            </Button>
+            {sync && typeof sync.sweptArtists === 'number' && sync.sweptArtists > 0 && !sweep?.running && (
+              <p className="text-xs text-muted-foreground">{sync.sweptArtists.toLocaleString()} artists swept so far</p>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Pulls songs from ~900 legendary bands & artists — Rock, Metal, Pop, Hip-Hop, K-Pop, J-Pop, Bollywood, Latin, Afrobeats, Classical and 20+ more scenes. Resumes where it left off.
+          </p>
+          {sweep?.running && sweep.total > 0 && (
+            <div className="mt-3 space-y-1.5">
+              <Progress value={(sweep.done / sweep.total) * 100} className="h-2" aria-label="Artist sweep progress" />
+              <p className="text-xs text-emerald-400" aria-live="polite">
+                {sweep.done}/{sweep.total} artists · +{sweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+                {sweep.current ? ` · now: ${sweep.current}` : ''}
+              </p>
+            </div>
           )}
         </div>
         {sync && sync.logs.length > 0 && (

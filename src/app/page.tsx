@@ -7,12 +7,15 @@ import { useUI, hydrateRecentSearches } from '@/stores/ui'
 import { useLibrary } from '@/stores/library'
 import { usePins } from '@/stores/pins'
 import { useAudioEngine } from '@/hooks/use-audio-engine'
+import { startAutoSync } from '@/hooks/use-auto-sync'
 import { Sidebar } from '@/components/shell/sidebar'
 import { TopBar } from '@/components/shell/topbar'
 import { PlayerBar } from '@/components/shell/player-bar'
 import { RightRail } from '@/components/shell/right-rail'
 import { FullscreenPlayer } from '@/components/shell/fullscreen-player'
 import { ViewRouter } from '@/components/shell/view-router'
+import { MobileNav } from '@/components/shell/mobile-nav'
+import { PwaRegister } from '@/components/shell/pwa-register'
 import { Toasts, AddToPlaylistDialog, KeyboardShortcuts, SleepTimerBadge } from '@/components/shell/overlays'
 
 export default function Page() {
@@ -22,41 +25,33 @@ export default function Page() {
     hydrateRecentSearches()
     useLibrary.getState().loadAll()
     usePins.getState().hydrate()
+    startAutoSync() // poll the industry catalog for new songs while the app is open
+    // deep link support (PWA app shortcuts / shared links): /?view=settings etc.
+    const v = new URLSearchParams(window.location.search).get('view')
+    const simple = ['home', 'search', 'explore', 'liked', 'history', 'replay', 'import', 'settings', 'rooms'] as const
+    if (v && (simple as readonly string[]).includes(v)) {
+      useUI.getState().navigate({ name: v } as never)
+    }
   }, [])
 
-  // bottom mobile nav state
-  const { view, navigate } = useUI()
-
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <KeyboardShortcuts />
       <SleepTimerBadge />
+      <PwaRegister />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col" aria-label="Walkman main">
           <TopBar />
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 md:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-2 md:px-6">
             <ViewRouter />
           </div>
-          {/* mobile bottom nav */}
-          <nav className="flex h-14 items-center justify-around border-t border-border/50 bg-black/40 md:hidden" aria-label="Mobile navigation">
-            {([
-              ['home', 'Home'], ['search', 'Search'], ['explore', 'Explore'], ['liked', 'Liked'], ['rooms', 'Rooms'],
-            ] as const).map(([name, label]) => (
-              <button
-                key={name}
-                onClick={() => navigate({ name } as never)}
-                aria-current={view.name === name ? 'page' : undefined}
-                className={view.name === name ? 'text-emerald-400' : 'text-muted-foreground'}
-              >
-                <span className="text-[10px]">{label}</span>
-              </button>
-            ))}
-          </nav>
         </main>
         <RightRail />
       </div>
+      {/* mini player sits directly above the mobile tab bar (Spotify ordering) */}
       <PlayerBar />
+      <MobileNav />
       <FullscreenPlayer />
       <Toasts />
       <AddToPlaylistDialog />

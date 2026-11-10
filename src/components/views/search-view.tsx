@@ -92,12 +92,12 @@ export function SearchView() {
     <div className="space-y-8 pb-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">
-          Results for <span className="text-emerald-400">“{searchQuery.trim()}”</span>
+          Results for <span className="text-[#1ed760]">“{searchQuery.trim()}”</span>
         </h1>
         <div className="flex items-center gap-2">
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Searching" />}
           {extended > 0 && !loading && (
-            <Badge variant="outline" className="border-emerald-500/50 text-emerald-400">
+            <Badge variant="outline" className="border-[#1db954]/50 text-[#1ed760]">
               <PlusCircle className="mr-1 h-3 w-3" aria-hidden /> +{extended} added to catalog
             </Badge>
           )}
@@ -144,10 +144,10 @@ export function SearchView() {
                     <div className="truncate text-2xl font-bold">{top.title}</div>
                     <div className="mt-1 text-sm text-muted-foreground">
                       Song · <span className="hover:underline">{top.artist}</span>
-                      {top.hasFull && <span className="ml-2 rounded border border-emerald-500/50 px-1 text-[10px] font-semibold text-emerald-400">HI-FI</span>}
+                      {top.hasFull && <span className="ml-2 rounded border border-[#1db954]/50 px-1 text-[10px] font-semibold text-[#1ed760]">HI-FI</span>}
                     </div>
                   </div>
-                  <span className="absolute bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-black opacity-0 shadow-xl transition-all group-hover:opacity-100">
+                  <span className="absolute bottom-5 right-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#1db954] text-black opacity-0 shadow-xl transition-all group-hover:opacity-100">
                     {queue[queueIndex]?.id === top.id && isPlaying ? <Pause className="h-5 w-5 fill-current" aria-hidden /> : <Play className="h-5 w-5 fill-current translate-x-[1px]" aria-hidden />}
                   </span>
                 </button>

@@ -4,7 +4,7 @@
 // EQ quick panel, lyrics, queue.
 import { useEffect, useRef, useState } from 'react'
 import {
-  X, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart, ChevronDown, ListMusic, SlidersHorizontal,
+  Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Heart, ChevronDown, ListMusic, SlidersHorizontal,
 } from 'lucide-react'
 import { usePlayer } from '@/stores/player'
 import { useLibrary } from '@/stores/library'
@@ -224,7 +224,7 @@ export function FullscreenPlayer() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-zinc-950"
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-zinc-950 pt-[env(safe-area-inset-top)]"
       role="dialog"
       aria-label="Full screen player"
     >
@@ -237,26 +237,26 @@ export function FullscreenPlayer() {
       />
       <div className="pointer-events-none absolute inset-0 bg-black/50" />
 
-      <div className="relative flex items-center justify-between p-6">
+      <div className="relative flex items-center justify-between px-5 pt-4 sm:px-6">
         <button
           onClick={() => navigate({ name: 'artist', artistName: track.artist })}
-          className="text-sm text-muted-foreground hover:text-foreground"
+          className="min-w-0 truncate text-sm text-muted-foreground hover:text-foreground"
         >
           {track.artist}
         </button>
-        <button aria-label="Close full screen" className="rounded-full p-2 hover:bg-white/10" onClick={() => setFullscreen(false)}>
-          <ChevronDown className="h-5 w-5" aria-hidden />
+        <button aria-label="Close full screen" className="shrink-0 rounded-full p-2 hover:bg-white/10 active:bg-white/20" onClick={() => setFullscreen(false)}>
+          <ChevronDown className="h-6 w-6" aria-hidden />
         </button>
       </div>
 
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-8 overflow-y-auto px-6 pb-10">
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-5 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:gap-8 sm:px-6">
         <div className="relative w-full max-w-sm md:max-w-md lg:max-w-lg">
           <Cover src={track.cover} alt={`${track.title} artwork`} className="aspect-square w-full shadow-2xl" rounded="rounded-xl" />
           <div className="absolute inset-x-0 -bottom-2 flex justify-center"><Visualizer playing={isPlaying} /></div>
         </div>
 
         <div className="w-full max-w-xl text-center">
-          <h1 className="truncate text-3xl font-bold tracking-tight md:text-4xl">{track.title}</h1>
+          <h1 className="line-clamp-2 text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl md:line-clamp-2 lg:line-clamp-none">{track.title}</h1>
           <p className="mt-1 text-lg text-muted-foreground">{track.artist}</p>
           <p className="mt-1 text-xs text-muted-foreground/70">
             {track.genre}{track.year ? ` · ${track.year}` : ''} · {track.hasFull ? `${track.bitrateKbps} kbps full-length` : 'preview'}
@@ -280,24 +280,24 @@ export function FullscreenPlayer() {
         </div>
 
         {/* transport */}
-        <div className="flex items-center gap-6">
-          <button aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'} className={cn('rounded-full p-2', shuffle ? 'text-emerald-400' : 'text-muted-foreground')} onClick={toggleShuffle}>
+        <div className="flex touch-manipulation items-center gap-5 sm:gap-6">
+          <button aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'} className={cn('rounded-full p-2', shuffle ? 'text-[#1ed760]' : 'text-muted-foreground')} onClick={toggleShuffle}>
             <Shuffle className="h-5 w-5" aria-hidden />
           </button>
-          <button aria-label="Previous" onClick={prev} className="text-foreground hover:scale-105">
+          <button aria-label="Previous" onClick={prev} className="active:scale-95">
             <SkipBack className="h-8 w-8 fill-current" aria-hidden />
           </button>
           <button
             aria-label={isPlaying ? 'Pause' : 'Play'}
             onClick={playPause}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-foreground text-background shadow-xl transition-transform hover:scale-105 active:scale-95"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-foreground text-background shadow-xl transition-transform active:scale-90"
           >
             {isPlaying ? <Pause className="h-7 w-7 fill-current" aria-hidden /> : <Play className="h-7 w-7 fill-current translate-x-[2px]" aria-hidden />}
           </button>
-          <button aria-label="Next" onClick={next} className="text-foreground hover:scale-105">
+          <button aria-label="Next" onClick={next} className="active:scale-95">
             <SkipForward className="h-8 w-8 fill-current" aria-hidden />
           </button>
-          <button aria-label={`Repeat ${repeat}`} className={cn('rounded-full p-2', repeat !== 'off' ? 'text-emerald-400' : 'text-muted-foreground')} onClick={cycleRepeat}>
+          <button aria-label={`Repeat ${repeat}`} className={cn('rounded-full p-2', repeat !== 'off' ? 'text-[#1ed760]' : 'text-muted-foreground')} onClick={cycleRepeat}>
             {repeat === 'one' ? <Repeat1 className="h-5 w-5" aria-hidden /> : <Repeat className="h-5 w-5" aria-hidden />}
           </button>
         </div>
@@ -305,10 +305,10 @@ export function FullscreenPlayer() {
         <div className="relative flex items-center gap-3">
           <button
             aria-label={liked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
-            className={cn('flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10', liked && 'text-emerald-400')}
+            className={cn('flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10', liked && 'text-[#1ed760]')}
             onClick={() => toggleLike(track.id)}
           >
-            <Heart className={cn('h-3.5 w-3.5', liked && 'fill-emerald-400')} aria-hidden /> {liked ? 'Liked' : 'Like'}
+            <Heart className={cn('h-3.5 w-3.5', liked && 'fill-[#1ed760]')} aria-hidden /> {liked ? 'Liked' : 'Like'}
           </button>
           <button
             type="button"
@@ -317,7 +317,7 @@ export function FullscreenPlayer() {
             onClick={() => setEqOpen((o) => !o)}
             className={cn(
               'flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs hover:bg-white/10',
-              (eqOpen || eqEnabled) && 'border-emerald-400/40 text-emerald-400',
+              (eqOpen || eqEnabled) && 'border-[#1ed760]/40 text-[#1ed760]',
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden /> EQ
@@ -349,10 +349,6 @@ export function FullscreenPlayer() {
         </div>
         {isPlaying && <EqBars />}
       </div>
-
-      <button aria-label="Close" className="absolute right-6 top-6 rounded-full bg-white/5 p-2 hover:bg-white/10" onClick={() => setFullscreen(false)}>
-        <X className="h-4 w-4" aria-hidden />
-      </button>
     </div>
   )
 }

@@ -22,9 +22,9 @@ export function Toasts() {
         <button
           key={t.id}
           onClick={() => dismissToast(t.id)}
-          className="pointer-events-auto flex max-w-[90vw] items-center gap-2 rounded-full border border-emerald-500/30 bg-zinc-900/95 px-4 py-2 text-sm shadow-2xl backdrop-blur transition-all"
+          className="pointer-events-auto flex max-w-[90vw] items-center gap-2 rounded-full border border-[#1db954]/30 bg-zinc-900/95 px-4 py-2 text-sm shadow-2xl backdrop-blur transition-all"
         >
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-[#1ed760]" aria-hidden />
           <span className="truncate">{t.text}</span>
         </button>
       ))}
@@ -163,7 +163,7 @@ export function SleepTimerBadge() {
   }, [sleepAt])
   if (!sleepAt || left <= 0) return null
   return (
-    <div className={cn('pointer-events-none fixed left-3 top-16 z-50 rounded-full border border-emerald-500/40 bg-black/70 px-2.5 py-1 text-[10px] font-medium text-emerald-400 backdrop-blur')}>
+    <div className={cn('pointer-events-none fixed left-3 top-16 z-50 rounded-full border border-[#1db954]/40 bg-black/70 px-2.5 py-1 text-[10px] font-medium text-[#1ed760] backdrop-blur')}>
       Sleep in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
     </div>
   )

@@ -13,11 +13,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Walkman — Free Hi-Fi Music Streaming",
   description:
     "Walkman is a free music streaming app with lossless-quality playback and universal playlist import: bring your playlists from Spotify, Apple Music, YouTube Music and more.",
   keywords: ["Walkman", "music streaming", "playlist import", "hi-fi audio", "free music app"],
   applicationName: "Walkman",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Walkman",
+  },
   openGraph: {
     title: "Walkman — Free Hi-Fi Music Streaming",
     description: "Stream in lossless quality for free and import playlists from any music app.",
@@ -36,6 +50,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
   themeColor: "#09090b",
 };
 

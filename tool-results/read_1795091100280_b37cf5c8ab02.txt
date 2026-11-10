@@ -1,0 +1,640 @@
+     1→'use client'
+     2→
+     3→// Settings: playback (autoplay, crossfade, speed, skip silence), 10-band equalizer,
+     4→// quality tiers, catalog sync, sleep timer, keyboard shortcuts.
+     5→import { useEffect, useState } from 'react'
+     6→import { usePlayer } from '@/stores/player'
+     7→import { useUI } from '@/stores/ui'
+     8→import { api, type ArtistSweep, type SpotifySync, type DeepSweep, type FullSweep, type IndianRap } from '@/lib/client-api'
+     9→import { EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
+    10→import { isBackgroundPlayEnabled, setBackgroundPlayEnabled, hasAndroidBridge } from '@/lib/android-bridge'
+    11→import { isAutoSyncEnabled, setAutoSyncEnabled } from '@/hooks/use-auto-sync'
+    12→import { Slider } from '@/components/ui/slider'
+    13→import { Switch } from '@/components/ui/switch'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Progress } from '@/components/ui/progress'
+    18→import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal, Users, Music2, Disc3, Zap, Flame, Smartphone, Download } from 'lucide-react'
+    19→
+    20→interface SyncStatus {
+    21→  logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]
+    22→  total: number
+    23→  artistCount?: number
+    24→  lastSyncedAt: string | null
+    25→  artistSweep?: ArtistSweep
+    26→  sweptArtists?: number
+    27→  spotifySync?: SpotifySync
+    28→  spotifyPlaylists?: number
+    29→  deepSweep?: DeepSweep
+    30→  deepCrawledArtists?: number
+    31→  thinArtists?: number
+    32→  indianRap?: IndianRap
+    33→  indianRapArtists?: number
+    34→  fullSweep?: FullSweep
+    35→  fullLength?: number
+    36→  previewCount?: number
+    37→}
+    38→
+    39→export function SettingsView() {
+    40→  const player = usePlayer()
+    41→  const { toast } = useUI()
+    42→  const [sync, setSync] = useState<SyncStatus | null>(null)
+    43→  const [genres, setGenres] = useState<{ total: number; fullLength: number } | null>(null)
+    44→  const [syncing, setSyncing] = useState(false)
+    45→  const [expanding, setExpanding] = useState(false)
+    46→  const [spotifySyncing, setSpotifySyncing] = useState(false)
+    47→  const [deepSyncing, setDeepSyncing] = useState(false)
+    48→  const [fullSyncing, setFullSyncing] = useState(false)
+    49→  const [indianRapSyncing, setIndianRapSyncing] = useState(false)
+    50→  const [bgPlay, setBgPlay] = useState(true)
+    51→  const [autoAdd, setAutoAdd] = useState(true)
+    52→  const [isAndroid, setIsAndroid] = useState(false)
+    53→
+    54→  useEffect(() => {
+    55→    setBgPlay(isBackgroundPlayEnabled())
+    56→    setAutoAdd(isAutoSyncEnabled())
+    57→    setIsAndroid(hasAndroidBridge())
+    58→  }, [])
+    59→
+    60→  useEffect(() => {
+    61→    api.syncStatus().then(setSync).catch(() => {})
+    62→    api.genres().then((g) => setGenres({ total: g.total, fullLength: g.fullLength })).catch(() => {})
+    63→  }, [])
+    64→
+    65→  // live-poll while any sweep runs
+    66→  const sweep = sync?.artistSweep
+    67→  const spSync = sync?.spotifySync
+    68→  const deepSweep = sync?.deepSweep
+    69→  const fullSweep = sync?.fullSweep
+    70→  const iRap = sync?.indianRap
+    71→  useEffect(() => {
+    72→    if (!sweep?.running && !spSync?.running && !deepSweep?.running && !fullSweep?.running && !iRap?.running) return
+    73→    const t = setInterval(() => {
+    74→      api.syncStatus().then(setSync).catch(() => {})
+    75→    }, 2500)
+    76→    return () => clearInterval(t)
+    77→  }, [sweep?.running, spSync?.running, deepSweep?.running, fullSweep?.running, iRap?.running])
+    78→
+    79→  const syncIndianRap = async () => {
+    80→    setIndianRapSyncing(true)
+    81→    try {
+    82→      await api.indianRap()
+    83→      toast('Importing the Desi Hip-Hop scene — full-length 320 kbps streams incoming')
+    84→      const s = await api.syncStatus()
+    85→      setSync(s)
+    86→    } catch {
+    87→      toast('Could not start the Indian rap sync — try again')
+    88→    } finally {
+    89→      setIndianRapSyncing(false)
+    90→    }
+    91→  }
+    92→
+    93→  const runFullSongs = async () => {
+    94→    setFullSyncing(true)
+    95→    try {
+    96→      await api.fullSongs()
+    97→      toast('Converting every preview to a full-length 320 kbps song')
+    98→      const s = await api.syncStatus()
+    99→      setSync(s)
+   100→    } catch {
+   101→      toast('Could not start the full-song sweep — try again')
+   102→    } finally {
+   103→      setFullSyncing(false)
+   104→    }
+   105→  }
+   106→
+   107→  const completeDiscographies = async () => {
+   108→    setDeepSyncing(true)
+   109→    try {
+   110→      await api.deepArtists()
+   111→      toast('Completing every artist’s discography — all albums, all songs')
+   112→      const s = await api.syncStatus()
+   113→      setSync(s)
+   114→    } catch {
+   115→      toast('Could not start the discography sweep — try again')
+   116→    } finally {
+   117→      setDeepSyncing(false)
+   118→    }
+   119→  }
+   120→
+   121→  const syncSpotifyCharts = async () => {
+   122→    setSpotifySyncing(true)
+   123→    try {
+   124→      await api.syncSpotify()
+   125→      toast('Syncing Spotify\u2019s official charts — new hits land in the library as it runs')
+   126→      const s = await api.syncStatus()
+   127→      setSync(s)
+   128→    } catch {
+   129→      toast('Could not start the Spotify sync — try again')
+   130→    } finally {
+   131→      setSpotifySyncing(false)
+   132→    }
+   133→  }
+   134→
+   135→  const expandArtists = async () => {
+   136→    setExpanding(true)
+   137→    try {
+   138→      await api.expandArtists()
+   139→      toast('Sweeping the world\'s bands & artists — the library fills as it runs')
+   140→      const s = await api.syncStatus()
+   141→      setSync(s)
+   142→    } catch {
+   143→      toast('Could not start the sweep — try again')
+   144→    } finally {
+   145→      setExpanding(false)
+   146→    }
+   147→  }
+   148→
+   149→  const runSync = async () => {
+   150→    setSyncing(true)
+   151→    try {
+   152→      const r = await api.runSync()
+   153→      toast(`Catalog updated: +${r.added} new songs (${r.total} total)`)
+   154→      const s = await api.syncStatus()
+   155→      setSync(s)
+   156→      setGenres((g) => (g ? { ...g, total: r.total } : g))
+   157→    } catch {
+   158→      toast('Sync failed — check your connection')
+   159→    } finally {
+   160→      setSyncing(false)
+   161→    }
+   162→  }
+   163→
+   164→  return (
+   165→    <div className="mx-auto max-w-3xl space-y-8 pb-4">
+   166→      <div>
+   167→        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+   168→        <p className="text-sm text-muted-foreground">Tune Walkman to how you listen.</p>
+   169→      </div>
+   170→
+   171→      {/* Playback */}
+   172→      <section aria-label="Playback settings" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   173→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   174→          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Playback
+   175→        </h2>
+   176→        <div className="space-y-5">
+   177→          <div className="flex items-center justify-between gap-4">
+   178→            <div>
+   179→              <p className="text-sm font-medium">Endless AutoPlay</p>
+   180→              <p className="text-xs text-muted-foreground">When the queue ends, similar songs keep playing (song radio).</p>
+   181→            </div>
+   182→            <Switch checked={player.autoplay} onCheckedChange={player.setAutoplay} aria-label="Toggle autoplay" />
+   183→          </div>
+   184→
+   185→          <div>
+   186→            <div className="flex items-center justify-between gap-4">
+   187→              <div>
+   188→                <p className="text-sm font-medium">Crossfade</p>
+   189→                <p className="text-xs text-muted-foreground">Blend the end of songs into the next. 0 = off.</p>
+   190→              </div>
+   191→              <span className="text-sm tabular-nums text-[#1ed760]">{player.crossfadeSec}s</span>
+   192→            </div>
+   193→            <Slider
+   194→              className="mt-3"
+   195→              value={[player.crossfadeSec]}
+   196→              max={12}
+   197→              step={1}
+   198→              onValueChange={(v) => player.setCrossfade(v[0] ?? 0)}
+   199→              aria-label="Crossfade seconds"
+   200→            />
+   201→          </div>
+   202→
+   203→          <div className="flex items-center justify-between gap-4">
+   204→            <div>
+   205→              <p className="text-sm font-medium">Playback speed</p>
+   206→              <p className="text-xs text-muted-foreground">Pitch-preserving tempo control.</p>
+   207→            </div>
+   208→            <Select value={String(player.speed)} onValueChange={(v) => player.setSpeed(Number(v))}>
+   209→              <SelectTrigger className="w-28" aria-label="Playback speed">
+   210→                <SelectValue />
+   211→              </SelectTrigger>
+   212→              <SelectContent>
+   213→                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+   214→                  <SelectItem key={s} value={String(s)}>{s}×</SelectItem>
+   215→                ))}
+   216→              </SelectContent>
+   217→            </Select>
+   218→          </div>
+   219→
+   220→          <div className="flex items-center justify-between gap-4">
+   221→            <div>
+   222→              <p className="text-sm font-medium">Skip silence</p>
+   223→              <p className="text-xs text-muted-foreground">Jumps over long quiet stretches (2.5s+) automatically. Uses the live audio signal.</p>
+   224→            </div>
+   225→            <Switch checked={player.skipSilence} onCheckedChange={player.setSkipSilence} aria-label="Toggle skip silence" />
+   226→          </div>
+   227→
+   228→          <div className="flex items-center justify-between gap-4">
+   229→            <div>
+   230→              <p className="text-sm font-medium">Background playback</p>
+   231→              <p className="text-xs text-muted-foreground">
+   232→                {isAndroid
+   233→                  ? 'Music keeps playing when you turn the screen off or switch apps, with controls on the lock screen.'
+   234→                  : 'Music keeps playing when the screen turns off. Fully active in the Walkman Android app; enabled here too.'}
+   235→              </p>
+   236→            </div>
+   237→            <Switch
+   238→              checked={bgPlay}
+   239→              onCheckedChange={(v) => { setBgPlay(v); setBackgroundPlayEnabled(v); toast(v ? 'Background playback on' : 'Background playback off — music stops in background') }}
+   240→              aria-label="Toggle background playback"
+   241→            />
+   242→          </div>
+   243→        </div>
+   244→      </section>
+   245→
+   246→      {/* Quality */}
+   247→      <section aria-label="Sound quality" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   248→        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Sound quality</h2>
+   249→        <div className="flex items-center justify-between gap-4">
+   250→          <div>
+   251→            <p className="text-sm font-medium">Streaming quality</p>
+   252→            <p className="text-xs text-muted-foreground">
+   253→              Best available per song: full-length 320 kbps streams, or 256 kbps AAC.
+   254→            </p>
+   255→          </div>
+   256→          <Select value={player.quality} onValueChange={(v) => { player.setQuality(v as 'auto' | 'full' | 'saver'); toast(`Quality: ${v}`) }}>
+   257→            <SelectTrigger className="w-44" aria-label="Streaming quality">
+   258→              <SelectValue />
+   259→            </SelectTrigger>
+   260→            <SelectContent>
+   261→              <SelectItem value="auto">Auto (best available)</SelectItem>
+   262→              <SelectItem value="full">HI-FI (full-length only)</SelectItem>
+   263→              <SelectItem value="saver">Data saver (previews)</SelectItem>
+   264→            </SelectContent>
+   265→          </Select>
+   266→        </div>
+   267→        {genres && (
+   268→          <div className="mt-4 flex flex-wrap gap-2">
+   269→            <Badge variant="outline" className="border-[#1db954]/50 text-[#1ed760]">
+   270→              {genres.fullLength.toLocaleString()} HI-FI full-length
+   271→            </Badge>
+   272→            <Badge variant="outline" className="border-border text-muted-foreground">
+   273→              {genres.total.toLocaleString()} total tracks
+   274→            </Badge>
+   275→          </div>
+   276→        )}
+   277→      </section>
+   278→
+   279→      {/* Equalizer */}
+   280→      <section aria-label="Equalizer settings" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   281→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   282→          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Equalizer
+   283→        </h2>
+   284→        <div className="space-y-5">
+   285→          <div className="flex items-center justify-between gap-4">
+   286→            <div>
+   287→              <p className="text-sm font-medium">10-band equalizer</p>
+   288→              <p className="text-xs text-muted-foreground">Shape the sound. Works on the live audio signal.</p>
+   289→            </div>
+   290→            <Switch checked={player.eqEnabled} onCheckedChange={player.setEqEnabled} aria-label="Toggle equalizer" />
+   291→          </div>
+   292→
+   293→          <div className="flex items-center justify-between gap-4">
+   294→            <div>
+   295→              <p className="text-sm font-medium">Preset</p>
+   296→              <p className="text-xs text-muted-foreground">Start from a curve, then fine-tune any band.</p>
+   297→            </div>
+   298→            <Select value={player.eqPreset} onValueChange={player.setEqPreset} disabled={!player.eqEnabled}>
+   299→              <SelectTrigger className="w-40" aria-label="Equalizer preset">
+   300→                <SelectValue />
+   301→              </SelectTrigger>
+   302→              <SelectContent>
+   303→                {Object.keys(EQ_PRESETS).map((name) => (
+   304→                  <SelectItem key={name} value={name}>{name}</SelectItem>
+   305→                ))}
+   306→                <SelectItem value="Custom" disabled>Custom</SelectItem>
+   307→              </SelectContent>
+   308→            </Select>
+   309→          </div>
+   310→
+   311→          <div
+   312→            className={`grid gap-x-8 gap-y-3 sm:grid-cols-2 transition-opacity ${player.eqEnabled ? '' : 'pointer-events-none opacity-50'}`}
+   313→          >
+   314→            {EQ_BANDS.map((freq, i) => {
+   315→              const gain = player.eqGains[i] ?? 0
+   316→              return (
+   317→                <div key={freq} className="flex items-center gap-3">
+   318→                  <span className="w-12 text-xs tabular-nums text-muted-foreground">
+   319→                    {freq < 1000 ? String(freq) : `${freq / 1000}k`}
+   320→                  </span>
+   321→                  <Slider
+   322→                    className="flex-1"
+   323→                    min={EQ_MIN}
+   324→                    max={EQ_MAX}
+   325→                    step={1}
+   326→                    value={[gain]}
+   327→                    onValueChange={(v) => player.setEqBand(i, v[0] ?? 0)}
+   328→                    aria-label={`${freq < 1000 ? freq : `${freq / 1000}k`} hertz band`}
+   329→                  />
+   330→                  <span className="w-10 text-right text-xs tabular-nums">
+   331→                    {gain > 0 ? `+${gain} dB` : `${gain} dB`}
+   332→                  </span>
+   333→                </div>
+   334→              )
+   335→            })}
+   336→          </div>
+   337→        </div>
+   338→        <p className="mt-4 text-xs text-muted-foreground">
+   339→          Presets: 10 presets from Bass Boost to Treble Boost. Your curve is saved automatically.
+   340→        </p>
+   341→      </section>
+   342→
+   343→      {/* Catalog sync */}
+   344→      <section aria-label="Catalog sync" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   345→        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   346→          <Database className="h-4 w-4" aria-hidden /> Catalog sync
+   347→        </h2>
+   348→        <p className="mb-4 text-xs text-muted-foreground">
+   349→          Walkman auto-adds new songs from the industry catalog (Audius + iTunes + Spotify charts) every few hours. You can sync now too.
+   350→        </p>
+   351→        <div className="mb-5 flex items-center justify-between gap-4 rounded-lg border border-[#1db954]/30 bg-[#1db954]/5 p-4">
+   352→          <div>
+   353→            <p className="text-sm font-medium">Auto-add new songs</p>
+   354→            <p className="text-xs text-muted-foreground">
+   355→              Checks for brand-new releases every 30 minutes while Walkman is open — the server also sweeps on its own every 6 hours.
+   356→            </p>
+   357→          </div>
+   358→          <Switch
+   359→            checked={autoAdd}
+   360→            onCheckedChange={(v) => { setAutoAdd(v); setAutoSyncEnabled(v); toast(v ? 'Auto-add on — new songs land automatically' : 'Auto-add off') }}
+   361→            aria-label="Toggle auto-add new songs"
+   362→          />
+   363→        </div>
+   364→        <div className="flex flex-wrap items-center gap-3">
+   365→          <Button onClick={runSync} disabled={syncing} className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]">
+   366→            {syncing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+   367→            {syncing ? 'Syncing…' : 'Sync now'}
+   368→          </Button>
+   369→          {sync && (
+   370→            <p className="text-xs text-muted-foreground">
+   371→              {sync.total.toLocaleString()} tracks · {sync.artistCount?.toLocaleString() ?? '—'} artists · last synced{' '}
+   372→              {sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : 'never'}
+   373→            </p>
+   374→          )}
+   375→        </div>
+   376→
+   377→        {/* Spotify auto-add — official charts & editorial playlists */}
+   378→        <div className="mt-5 rounded-lg border border-[#1db954]/30 bg-[#1db954]/5 p-4">
+   379→          <div className="flex flex-wrap items-center gap-3">
+   380→            <Button
+   381→              onClick={syncSpotifyCharts}
+   382→              disabled={spotifySyncing || !!spSync?.running}
+   383→              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
+   384→            >
+   385→              {spSync?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Music2 className="h-4 w-4" aria-hidden />}
+   386→              {spSync?.running ? 'Syncing Spotify…' : 'Sync Spotify charts'}
+   387→            </Button>
+   388→            {sync?.spotifyPlaylists ? (
+   389→              <p className="text-xs text-muted-foreground">{sync.spotifyPlaylists} official playlists tracked</p>
+   390→            ) : null}
+   391→          </div>
+   392→          <p className="mt-2 text-xs text-muted-foreground">
+   393→            Auto-adds Spotify’s official charts &amp; editorial playlists — Top Songs Global, Today’s Top Hits, RapCaviar, Viva Latino, K-Pop ON!, mint, New Music Friday and more. Charts refresh daily, so every sync brings the newest hits.
+   394→          </p>
+   395→          {spSync?.running && spSync.total > 0 && (
+   396→            <div className="mt-3 space-y-1.5">
+   397→              <Progress value={(spSync.done / spSync.total) * 100} className="h-2" aria-label="Spotify sync progress" />
+   398→              <p className="text-xs text-[#1ed760]" aria-live="polite">
+   399→                {spSync.done}/{spSync.total} playlists · +{spSync.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   400→                {spSync.current ? ` · now: ${spSync.current}` : ''}
+   401→              </p>
+   402→            </div>
+   403→          )}
+   404→        </div>
+   405→
+   406→        {/* Indian rap / Desi Hip-Hop scene — full-length streams */}
+   407→        <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+   408→          <div className="flex flex-wrap items-center gap-3">
+   409→            <Button
+   410→              onClick={syncIndianRap}
+   411→              disabled={indianRapSyncing || !!iRap?.running}
+   412→              className="gap-2 bg-amber-500 text-black hover:bg-amber-400"
+   413→            >
+   414→              {iRap?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Flame className="h-4 w-4" aria-hidden />}
+   415→              {iRap?.running ? 'Importing Indian rap…' : 'Import the Indian rap scene'}
+   416→            </Button>
+   417→            {sync && typeof sync.indianRapArtists === 'number' && sync.indianRapArtists > 0 && (
+   418→              <p className="text-xs text-muted-foreground">
+   419→                {sync.indianRapArtists} acts synced · +{(sync.indianRap?.added ?? 0).toLocaleString()} songs
+   420→              </p>
+   421→            )}
+   422→          </div>
+   423→          <p className="mt-2 text-xs text-muted-foreground">
+   424→            The full Desi Hip-Hop scene — DIVINE, Seedhe Maut, KR$NA, MC Stan, Emiway Bantai, Hanumankind, Brodha V, Sidhu Moose Wala, Karan Aujla, Raja Kumari and more — as <strong>official full-length 320 kbps JioSaavn streams</strong>, plus complete iTunes India discographies.
+   425→          </p>
+   426→          {iRap?.running && iRap.total > 0 && (
+   427→            <div className="mt-3 space-y-1.5">
+   428→              <Progress value={(iRap.done / iRap.total) * 100} className="h-2" aria-label="Indian rap sync progress" />
+   429→              <p className="text-xs text-amber-400" aria-live="polite">
+   430→                {iRap.done}/{iRap.total} acts · +{iRap.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   431→                {iRap.current ? ` · now: ${iRap.current}` : ''}
+   432→              </p>
+   433→            </div>
+   434→          )}
+   435→        </div>
+   436→
+   437→        {/* Full-song conversion — no more 30-second previews */}
+   438→        <div className="mt-5 rounded-lg border border-[#1db954]/30 bg-[#1db954]/5 p-4">
+   439→          <div className="flex flex-wrap items-center gap-3">
+   440→            <Button
+   441→              onClick={runFullSongs}
+   442→              disabled={fullSyncing || !!fullSweep?.running}
+   443→              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
+   444→            >
+   445→              {fullSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Zap className="h-4 w-4" aria-hidden />}
+   446→              {fullSweep?.running ? 'Converting to full songs…' : 'Convert all previews to full songs'}
+   447→            </Button>
+   448→            {sync && typeof sync.fullLength === 'number' && typeof sync.previewCount === 'number' && (
+   449→              <p className="text-xs text-muted-foreground">
+   450→                <span className="text-[#1ed760]">{sync.fullLength.toLocaleString()} full-length</span> · {sync.previewCount.toLocaleString()} previews left
+   451→              </p>
+   452→            )}
+   453→          </div>
+   454→          <p className="mt-2 text-xs text-muted-foreground">
+   455→            Upgrades every 30-second preview to a full-length 320 kbps stream — official JioSaavn masters and Audius full tracks. Also happens automatically the moment you play a song.
+   456→          </p>
+   457→          {fullSweep?.running && fullSweep.total > 0 && (
+   458→            <div className="mt-3 space-y-1.5">
+   459→              <Progress value={(fullSweep.done / fullSweep.total) * 100} className="h-2" aria-label="Full-song sweep progress" />
+   460→              <p className="text-xs text-[#1ed760]" aria-live="polite">
+   461→                {fullSweep.done.toLocaleString()}/{fullSweep.total.toLocaleString()} checked · {fullSweep.added.toLocaleString()} upgraded to full
+   462→                {fullSweep.current ? ` · now: ${fullSweep.current}` : ''}
+   463→              </p>
+   464→            </div>
+   465→          )}
+   466→        </div>
+   467→
+   468→        {/* Discography completion — every album, every song for under-covered artists */}
+   469→        <div className="mt-5 rounded-lg border border-[#1db954]/30 bg-[#1db954]/5 p-4">
+   470→          <div className="flex flex-wrap items-center gap-3">
+   471→            <Button
+   472→              onClick={completeDiscographies}
+   473→              disabled={deepSyncing || !!deepSweep?.running}
+   474→              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
+   475→            >
+   476→              {deepSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Disc3 className="h-4 w-4" aria-hidden />}
+   477→              {deepSweep?.running ? 'Completing discographies…' : 'Complete all artist discographies'}
+   478→            </Button>
+   479→            {sync && typeof sync.thinArtists === 'number' && (
+   480→              <p className="text-xs text-muted-foreground">
+   481→                {sync.thinArtists.toLocaleString()} artists need more songs
+   482→                {sync.deepCrawledArtists ? ` · ${sync.deepCrawledArtists.toLocaleString()} discographies completed` : ''}
+   483→              </p>
+   484→            )}
+   485→          </div>
+   486→          <p className="mt-2 text-xs text-muted-foreground">
+   487→            Walks every artist’s full album list and pulls <strong>every song on every album</strong> — no more one-song artists. Runs thinnest artists first and resumes where it left off.
+   488→          </p>
+   489→          {deepSweep?.running && deepSweep.total > 0 && (
+   490→            <div className="mt-3 space-y-1.5">
+   491→              <Progress value={(deepSweep.done / deepSweep.total) * 100} className="h-2" aria-label="Discography sweep progress" />
+   492→              <p className="text-xs text-[#1ed760]" aria-live="polite">
+   493→                {deepSweep.done}/{deepSweep.total} artists · +{deepSweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   494→                {deepSweep.current ? ` · now: ${deepSweep.current}` : ''}
+   495→              </p>
+   496→            </div>
+   497→          )}
+   498→        </div>
+   499→
+   500→        {/* Artist & band expansion — every major act, every genre */}
+   501→        <div className="mt-5 rounded-lg border border-[#1db954]/30 bg-[#1db954]/5 p-4">
+   502→          <div className="flex flex-wrap items-center gap-3">
+   503→            <Button
+   504→              onClick={expandArtists}
+   505→              disabled={expanding || !!sweep?.running}
+   506→              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
+   507→            >
+   508→              {sweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Users className="h-4 w-4" aria-hidden />}
+   509→              {sweep?.running ? 'Sweeping…' : 'Add all bands & artists'}
+   510→            </Button>
+   511→            {sync && typeof sync.sweptArtists === 'number' && sync.sweptArtists > 0 && !sweep?.running && (
+   512→              <p className="text-xs text-muted-foreground">{sync.sweptArtists.toLocaleString()} artists swept so far</p>
+   513→            )}
+   514→          </div>
+   515→          <p className="mt-2 text-xs text-muted-foreground">
+   516→            Pulls songs from ~900 legendary bands & artists — Rock, Metal, Pop, Hip-Hop, K-Pop, J-Pop, Bollywood, Latin, Afrobeats, Classical and 20+ more scenes. Resumes where it left off.
+   517→          </p>
+   518→          {sweep?.running && sweep.total > 0 && (
+   519→            <div className="mt-3 space-y-1.5">
+   520→              <Progress value={(sweep.done / sweep.total) * 100} className="h-2" aria-label="Artist sweep progress" />
+   521→              <p className="text-xs text-[#1ed760]" aria-live="polite">
+   522→                {sweep.done}/{sweep.total} artists · +{sweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   523→                {sweep.current ? ` · now: ${sweep.current}` : ''}
+   524→              </p>
+   525→            </div>
+   526→          )}
+   527→        </div>
+   528→        {sync && sync.logs.length > 0 && (
+   529→          <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-border/40">
+   530→            <table className="w-full text-left text-xs">
+   531→              <thead className="sticky top-0 bg-black/80 text-muted-foreground">
+   532→                <tr>
+   533→                  <th className="px-3 py-2 font-medium">Source</th>
+   534→                  <th className="px-3 py-2 font-medium">Scope</th>
+   535→                  <th className="px-3 py-2 text-right font-medium">Fetched</th>
+   536→                  <th className="px-3 py-2 text-right font-medium">Added</th>
+   537→                  <th className="px-3 py-2 text-right font-medium">When</th>
+   538→                </tr>
+   539→              </thead>
+   540→              <tbody>
+   541→                {sync.logs.slice(0, 15).map((l) => (
+   542→                  <tr key={l.id} className="border-t border-border/30">
+   543→                    <td className="px-3 py-1.5">{l.source}</td>
+   544→                    <td className="px-3 py-1.5">{l.scope}</td>
+   545→                    <td className="px-3 py-1.5 text-right tabular-nums">{l.fetched}</td>
+   546→                    <td className="px-3 py-1.5 text-right tabular-nums text-[#1ed760]">+{l.added}</td>
+   547→                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+   548→                      {new Date(l.syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+   549→                    </td>
+   550→                  </tr>
+   551→                ))}
+   552→              </tbody>
+   553→            </table>
+   554→          </div>
+   555→        )}
+   556→      </section>
+   557→
+   558→      {/* Sleep timer */}
+   559→      <section aria-label="Sleep timer" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   560→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   561→          <Timer className="h-4 w-4" aria-hidden /> Sleep timer
+   562→        </h2>
+   563→        <div className="flex flex-wrap items-center gap-2">
+   564→          {[5, 10, 15, 30, 45, 60].map((m) => (
+   565→            <Button
+   566→              key={m}
+   567→              size="sm"
+   568→              variant="outline"
+   569→              onClick={() => { player.startSleepTimer(m); toast(`Music stops in ${m} minutes`) }}
+   570→            >
+   571→              {m} min
+   572→            </Button>
+   573→          ))}
+   574→          <Button size="sm" variant="ghost" onClick={() => { player.startSleepTimer(0); toast('Sleep timer off') }}>
+   575→            Off
+   576→          </Button>
+   577→          {player.sleepAt && (
+   578→            <span className="text-xs text-[#1ed760]">Stops at {new Date(player.sleepAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+   579→          )}
+   580→        </div>
+   581→        <p className="mt-2 text-xs text-muted-foreground">Volume fades out gently over the last 20 seconds.</p>
+   582→      </section>
+   583→
+   584→      {/* Android app */}
+   585→      <section aria-label="Android app" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   586→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   587→          <Smartphone className="h-4 w-4" aria-hidden /> Android app
+   588→        </h2>
+   589→        <div className="flex flex-wrap items-center gap-3">
+   590→          <Button
+   591→            size="sm"
+   592→            className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
+   593→            onClick={() => {
+   594→              const a = document.createElement('a')
+   595→              a.href = '/walkman.apk'
+   596→              a.download = 'walkman.apk'
+   597→              document.body.appendChild(a)
+   598→              a.click()
+   599→              a.remove()
+   600→              toast('Downloading the Walkman APK…')
+   601→            }}
+   602→          >
+   603→            <Download className="h-4 w-4" aria-hidden /> Download APK
+   604→          </Button>
+   605→          <p className="text-xs text-muted-foreground">
+   606→            Install on your phone: open this link on the device, allow “install unknown apps” for your browser, then install. The app connects to this server automatically and keeps music playing with the screen off.
+   607→          </p>
+   608→        </div>
+   609→      </section>
+   610→
+   611→      {/* Shortcuts */}
+   612→      <section aria-label="Keyboard shortcuts" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   613→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   614→          <Keyboard className="h-4 w-4" aria-hidden /> Keyboard shortcuts
+   615→        </h2>
+   616→        <div className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+   617→          {[
+   618→            ['Space', 'Play / pause'],
+   619→            ['← / →', 'Seek 5s'],
+   620→            ['Shift + ← / →', 'Previous / next track'],
+   621→            ['↑ / ↓', 'Volume'],
+   622→            ['M', 'Mute'],
+   623→            ['S', 'Shuffle'],
+   624→            ['R', 'Repeat'],
+   625→            ['Q', 'Queue panel'],
+   626→            ['L', 'Lyrics panel'],
+   627→            ['N', 'Fullscreen player'],
+   628→            ['/', 'Focus search'],
+   629→          ].map(([k, v]) => (
+   630→            <div key={k} className="flex items-center justify-between gap-4 border-b border-border/30 py-1.5 last:border-0">
+   631→              <span className="text-muted-foreground">{v}</span>
+   632→              <kbd className="rounded border border-border bg-black/50 px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+   633→            </div>
+   634→          ))}
+   635→        </div>
+   636→      </section>
+   637→    </div>
+   638→  )
+   639→}
+   640→

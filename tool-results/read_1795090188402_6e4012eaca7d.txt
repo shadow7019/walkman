@@ -1,0 +1,600 @@
+     1→'use client'
+     2→
+     3→// Settings: playback (autoplay, crossfade, speed, skip silence), 10-band equalizer,
+     4→// quality tiers, catalog sync, sleep timer, keyboard shortcuts.
+     5→import { useEffect, useState } from 'react'
+     6→import { usePlayer } from '@/stores/player'
+     7→import { useUI } from '@/stores/ui'
+     8→import { api, type ArtistSweep, type SpotifySync, type DeepSweep, type FullSweep, type IndianRap } from '@/lib/client-api'
+     9→import { EQ_BANDS, EQ_PRESETS, EQ_MIN, EQ_MAX } from '@/lib/audio-graph'
+    10→import { Slider } from '@/components/ui/slider'
+    11→import { Switch } from '@/components/ui/switch'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Progress } from '@/components/ui/progress'
+    16→import { Loader2, RefreshCw, Database, Keyboard, Timer, SlidersHorizontal, Users, Music2, Disc3, Zap, Flame, Smartphone, Download } from 'lucide-react'
+    17→
+    18→interface SyncStatus {
+    19→  logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]
+    20→  total: number
+    21→  artistCount?: number
+    22→  lastSyncedAt: string | null
+    23→  artistSweep?: ArtistSweep
+    24→  sweptArtists?: number
+    25→  spotifySync?: SpotifySync
+    26→  spotifyPlaylists?: number
+    27→  deepSweep?: DeepSweep
+    28→  deepCrawledArtists?: number
+    29→  thinArtists?: number
+    30→  indianRap?: IndianRap
+    31→  indianRapArtists?: number
+    32→  fullSweep?: FullSweep
+    33→  fullLength?: number
+    34→  previewCount?: number
+    35→}
+    36→
+    37→export function SettingsView() {
+    38→  const player = usePlayer()
+    39→  const { toast } = useUI()
+    40→  const [sync, setSync] = useState<SyncStatus | null>(null)
+    41→  const [genres, setGenres] = useState<{ total: number; fullLength: number } | null>(null)
+    42→  const [syncing, setSyncing] = useState(false)
+    43→  const [expanding, setExpanding] = useState(false)
+    44→  const [spotifySyncing, setSpotifySyncing] = useState(false)
+    45→  const [deepSyncing, setDeepSyncing] = useState(false)
+    46→  const [fullSyncing, setFullSyncing] = useState(false)
+    47→  const [indianRapSyncing, setIndianRapSyncing] = useState(false)
+    48→
+    49→  useEffect(() => {
+    50→    api.syncStatus().then(setSync).catch(() => {})
+    51→    api.genres().then((g) => setGenres({ total: g.total, fullLength: g.fullLength })).catch(() => {})
+    52→  }, [])
+    53→
+    54→  // live-poll while any sweep runs
+    55→  const sweep = sync?.artistSweep
+    56→  const spSync = sync?.spotifySync
+    57→  const deepSweep = sync?.deepSweep
+    58→  const fullSweep = sync?.fullSweep
+    59→  const iRap = sync?.indianRap
+    60→  useEffect(() => {
+    61→    if (!sweep?.running && !spSync?.running && !deepSweep?.running && !fullSweep?.running && !iRap?.running) return
+    62→    const t = setInterval(() => {
+    63→      api.syncStatus().then(setSync).catch(() => {})
+    64→    }, 2500)
+    65→    return () => clearInterval(t)
+    66→  }, [sweep?.running, spSync?.running, deepSweep?.running, fullSweep?.running, iRap?.running])
+    67→
+    68→  const syncIndianRap = async () => {
+    69→    setIndianRapSyncing(true)
+    70→    try {
+    71→      await api.indianRap()
+    72→      toast('Importing the Desi Hip-Hop scene — full-length 320 kbps streams incoming')
+    73→      const s = await api.syncStatus()
+    74→      setSync(s)
+    75→    } catch {
+    76→      toast('Could not start the Indian rap sync — try again')
+    77→    } finally {
+    78→      setIndianRapSyncing(false)
+    79→    }
+    80→  }
+    81→
+    82→  const runFullSongs = async () => {
+    83→    setFullSyncing(true)
+    84→    try {
+    85→      await api.fullSongs()
+    86→      toast('Converting every preview to a full-length 320 kbps song')
+    87→      const s = await api.syncStatus()
+    88→      setSync(s)
+    89→    } catch {
+    90→      toast('Could not start the full-song sweep — try again')
+    91→    } finally {
+    92→      setFullSyncing(false)
+    93→    }
+    94→  }
+    95→
+    96→  const completeDiscographies = async () => {
+    97→    setDeepSyncing(true)
+    98→    try {
+    99→      await api.deepArtists()
+   100→      toast('Completing every artist’s discography — all albums, all songs')
+   101→      const s = await api.syncStatus()
+   102→      setSync(s)
+   103→    } catch {
+   104→      toast('Could not start the discography sweep — try again')
+   105→    } finally {
+   106→      setDeepSyncing(false)
+   107→    }
+   108→  }
+   109→
+   110→  const syncSpotifyCharts = async () => {
+   111→    setSpotifySyncing(true)
+   112→    try {
+   113→      await api.syncSpotify()
+   114→      toast('Syncing Spotify\u2019s official charts — new hits land in the library as it runs')
+   115→      const s = await api.syncStatus()
+   116→      setSync(s)
+   117→    } catch {
+   118→      toast('Could not start the Spotify sync — try again')
+   119→    } finally {
+   120→      setSpotifySyncing(false)
+   121→    }
+   122→  }
+   123→
+   124→  const expandArtists = async () => {
+   125→    setExpanding(true)
+   126→    try {
+   127→      await api.expandArtists()
+   128→      toast('Sweeping the world\'s bands & artists — the library fills as it runs')
+   129→      const s = await api.syncStatus()
+   130→      setSync(s)
+   131→    } catch {
+   132→      toast('Could not start the sweep — try again')
+   133→    } finally {
+   134→      setExpanding(false)
+   135→    }
+   136→  }
+   137→
+   138→  const runSync = async () => {
+   139→    setSyncing(true)
+   140→    try {
+   141→      const r = await api.runSync()
+   142→      toast(`Catalog updated: +${r.added} new songs (${r.total} total)`)
+   143→      const s = await api.syncStatus()
+   144→      setSync(s)
+   145→      setGenres((g) => (g ? { ...g, total: r.total } : g))
+   146→    } catch {
+   147→      toast('Sync failed — check your connection')
+   148→    } finally {
+   149→      setSyncing(false)
+   150→    }
+   151→  }
+   152→
+   153→  return (
+   154→    <div className="mx-auto max-w-3xl space-y-8 pb-4">
+   155→      <div>
+   156→        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+   157→        <p className="text-sm text-muted-foreground">Tune Walkman to how you listen.</p>
+   158→      </div>
+   159→
+   160→      {/* Playback */}
+   161→      <section aria-label="Playback settings" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   162→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   163→          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Playback
+   164→        </h2>
+   165→        <div className="space-y-5">
+   166→          <div className="flex items-center justify-between gap-4">
+   167→            <div>
+   168→              <p className="text-sm font-medium">Endless AutoPlay</p>
+   169→              <p className="text-xs text-muted-foreground">When the queue ends, similar songs keep playing (song radio).</p>
+   170→            </div>
+   171→            <Switch checked={player.autoplay} onCheckedChange={player.setAutoplay} aria-label="Toggle autoplay" />
+   172→          </div>
+   173→
+   174→          <div>
+   175→            <div className="flex items-center justify-between gap-4">
+   176→              <div>
+   177→                <p className="text-sm font-medium">Crossfade</p>
+   178→                <p className="text-xs text-muted-foreground">Blend the end of songs into the next. 0 = off.</p>
+   179→              </div>
+   180→              <span className="text-sm tabular-nums text-emerald-400">{player.crossfadeSec}s</span>
+   181→            </div>
+   182→            <Slider
+   183→              className="mt-3"
+   184→              value={[player.crossfadeSec]}
+   185→              max={12}
+   186→              step={1}
+   187→              onValueChange={(v) => player.setCrossfade(v[0] ?? 0)}
+   188→              aria-label="Crossfade seconds"
+   189→            />
+   190→          </div>
+   191→
+   192→          <div className="flex items-center justify-between gap-4">
+   193→            <div>
+   194→              <p className="text-sm font-medium">Playback speed</p>
+   195→              <p className="text-xs text-muted-foreground">Pitch-preserving tempo control.</p>
+   196→            </div>
+   197→            <Select value={String(player.speed)} onValueChange={(v) => player.setSpeed(Number(v))}>
+   198→              <SelectTrigger className="w-28" aria-label="Playback speed">
+   199→                <SelectValue />
+   200→              </SelectTrigger>
+   201→              <SelectContent>
+   202→                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+   203→                  <SelectItem key={s} value={String(s)}>{s}×</SelectItem>
+   204→                ))}
+   205→              </SelectContent>
+   206→            </Select>
+   207→          </div>
+   208→
+   209→          <div className="flex items-center justify-between gap-4">
+   210→            <div>
+   211→              <p className="text-sm font-medium">Skip silence</p>
+   212→              <p className="text-xs text-muted-foreground">Jumps over long quiet stretches (2.5s+) automatically. Uses the live audio signal.</p>
+   213→            </div>
+   214→            <Switch checked={player.skipSilence} onCheckedChange={player.setSkipSilence} aria-label="Toggle skip silence" />
+   215→          </div>
+   216→        </div>
+   217→      </section>
+   218→
+   219→      {/* Quality */}
+   220→      <section aria-label="Sound quality" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   221→        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Sound quality</h2>
+   222→        <div className="flex items-center justify-between gap-4">
+   223→          <div>
+   224→            <p className="text-sm font-medium">Streaming quality</p>
+   225→            <p className="text-xs text-muted-foreground">
+   226→              Best available per song: full-length 320 kbps streams, or 256 kbps AAC.
+   227→            </p>
+   228→          </div>
+   229→          <Select value={player.quality} onValueChange={(v) => { player.setQuality(v as 'auto' | 'full' | 'saver'); toast(`Quality: ${v}`) }}>
+   230→            <SelectTrigger className="w-44" aria-label="Streaming quality">
+   231→              <SelectValue />
+   232→            </SelectTrigger>
+   233→            <SelectContent>
+   234→              <SelectItem value="auto">Auto (best available)</SelectItem>
+   235→              <SelectItem value="full">HI-FI (full-length only)</SelectItem>
+   236→              <SelectItem value="saver">Data saver (previews)</SelectItem>
+   237→            </SelectContent>
+   238→          </Select>
+   239→        </div>
+   240→        {genres && (
+   241→          <div className="mt-4 flex flex-wrap gap-2">
+   242→            <Badge variant="outline" className="border-emerald-500/50 text-emerald-400">
+   243→              {genres.fullLength.toLocaleString()} HI-FI full-length
+   244→            </Badge>
+   245→            <Badge variant="outline" className="border-border text-muted-foreground">
+   246→              {genres.total.toLocaleString()} total tracks
+   247→            </Badge>
+   248→          </div>
+   249→        )}
+   250→      </section>
+   251→
+   252→      {/* Equalizer */}
+   253→      <section aria-label="Equalizer settings" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   254→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   255→          <SlidersHorizontal className="h-4 w-4" aria-hidden /> Equalizer
+   256→        </h2>
+   257→        <div className="space-y-5">
+   258→          <div className="flex items-center justify-between gap-4">
+   259→            <div>
+   260→              <p className="text-sm font-medium">10-band equalizer</p>
+   261→              <p className="text-xs text-muted-foreground">Shape the sound. Works on the live audio signal.</p>
+   262→            </div>
+   263→            <Switch checked={player.eqEnabled} onCheckedChange={player.setEqEnabled} aria-label="Toggle equalizer" />
+   264→          </div>
+   265→
+   266→          <div className="flex items-center justify-between gap-4">
+   267→            <div>
+   268→              <p className="text-sm font-medium">Preset</p>
+   269→              <p className="text-xs text-muted-foreground">Start from a curve, then fine-tune any band.</p>
+   270→            </div>
+   271→            <Select value={player.eqPreset} onValueChange={player.setEqPreset} disabled={!player.eqEnabled}>
+   272→              <SelectTrigger className="w-40" aria-label="Equalizer preset">
+   273→                <SelectValue />
+   274→              </SelectTrigger>
+   275→              <SelectContent>
+   276→                {Object.keys(EQ_PRESETS).map((name) => (
+   277→                  <SelectItem key={name} value={name}>{name}</SelectItem>
+   278→                ))}
+   279→                <SelectItem value="Custom" disabled>Custom</SelectItem>
+   280→              </SelectContent>
+   281→            </Select>
+   282→          </div>
+   283→
+   284→          <div
+   285→            className={`grid gap-x-8 gap-y-3 sm:grid-cols-2 transition-opacity ${player.eqEnabled ? '' : 'pointer-events-none opacity-50'}`}
+   286→          >
+   287→            {EQ_BANDS.map((freq, i) => {
+   288→              const gain = player.eqGains[i] ?? 0
+   289→              return (
+   290→                <div key={freq} className="flex items-center gap-3">
+   291→                  <span className="w-12 text-xs tabular-nums text-muted-foreground">
+   292→                    {freq < 1000 ? String(freq) : `${freq / 1000}k`}
+   293→                  </span>
+   294→                  <Slider
+   295→                    className="flex-1"
+   296→                    min={EQ_MIN}
+   297→                    max={EQ_MAX}
+   298→                    step={1}
+   299→                    value={[gain]}
+   300→                    onValueChange={(v) => player.setEqBand(i, v[0] ?? 0)}
+   301→                    aria-label={`${freq < 1000 ? freq : `${freq / 1000}k`} hertz band`}
+   302→                  />
+   303→                  <span className="w-10 text-right text-xs tabular-nums">
+   304→                    {gain > 0 ? `+${gain} dB` : `${gain} dB`}
+   305→                  </span>
+   306→                </div>
+   307→              )
+   308→            })}
+   309→          </div>
+   310→        </div>
+   311→        <p className="mt-4 text-xs text-muted-foreground">
+   312→          Presets: 10 presets from Bass Boost to Treble Boost. Your curve is saved automatically.
+   313→        </p>
+   314→      </section>
+   315→
+   316→      {/* Catalog sync */}
+   317→      <section aria-label="Catalog sync" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   318→        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   319→          <Database className="h-4 w-4" aria-hidden /> Catalog sync
+   320→        </h2>
+   321→        <p className="mb-4 text-xs text-muted-foreground">
+   322→          Walkman auto-adds new songs from the industry catalog (Audius + iTunes + Spotify charts) every few hours. You can sync now too.
+   323→        </p>
+   324→        <div className="flex flex-wrap items-center gap-3">
+   325→          <Button onClick={runSync} disabled={syncing} className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400">
+   326→            {syncing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+   327→            {syncing ? 'Syncing…' : 'Sync now'}
+   328→          </Button>
+   329→          {sync && (
+   330→            <p className="text-xs text-muted-foreground">
+   331→              {sync.total.toLocaleString()} tracks · {sync.artistCount?.toLocaleString() ?? '—'} artists · last synced{' '}
+   332→              {sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : 'never'}
+   333→            </p>
+   334→          )}
+   335→        </div>
+   336→
+   337→        {/* Spotify auto-add — official charts & editorial playlists */}
+   338→        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+   339→          <div className="flex flex-wrap items-center gap-3">
+   340→            <Button
+   341→              onClick={syncSpotifyCharts}
+   342→              disabled={spotifySyncing || !!spSync?.running}
+   343→              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+   344→            >
+   345→              {spSync?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Music2 className="h-4 w-4" aria-hidden />}
+   346→              {spSync?.running ? 'Syncing Spotify…' : 'Sync Spotify charts'}
+   347→            </Button>
+   348→            {sync?.spotifyPlaylists ? (
+   349→              <p className="text-xs text-muted-foreground">{sync.spotifyPlaylists} official playlists tracked</p>
+   350→            ) : null}
+   351→          </div>
+   352→          <p className="mt-2 text-xs text-muted-foreground">
+   353→            Auto-adds Spotify’s official charts &amp; editorial playlists — Top Songs Global, Today’s Top Hits, RapCaviar, Viva Latino, K-Pop ON!, mint, New Music Friday and more. Charts refresh daily, so every sync brings the newest hits.
+   354→          </p>
+   355→          {spSync?.running && spSync.total > 0 && (
+   356→            <div className="mt-3 space-y-1.5">
+   357→              <Progress value={(spSync.done / spSync.total) * 100} className="h-2" aria-label="Spotify sync progress" />
+   358→              <p className="text-xs text-emerald-400" aria-live="polite">
+   359→                {spSync.done}/{spSync.total} playlists · +{spSync.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   360→                {spSync.current ? ` · now: ${spSync.current}` : ''}
+   361→              </p>
+   362→            </div>
+   363→          )}
+   364→        </div>
+   365→
+   366→        {/* Indian rap / Desi Hip-Hop scene — full-length streams */}
+   367→        <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+   368→          <div className="flex flex-wrap items-center gap-3">
+   369→            <Button
+   370→              onClick={syncIndianRap}
+   371→              disabled={indianRapSyncing || !!iRap?.running}
+   372→              className="gap-2 bg-amber-500 text-black hover:bg-amber-400"
+   373→            >
+   374→              {iRap?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Flame className="h-4 w-4" aria-hidden />}
+   375→              {iRap?.running ? 'Importing Indian rap…' : 'Import the Indian rap scene'}
+   376→            </Button>
+   377→            {sync && typeof sync.indianRapArtists === 'number' && sync.indianRapArtists > 0 && (
+   378→              <p className="text-xs text-muted-foreground">
+   379→                {sync.indianRapArtists} acts synced · +{(sync.indianRap?.added ?? 0).toLocaleString()} songs
+   380→              </p>
+   381→            )}
+   382→          </div>
+   383→          <p className="mt-2 text-xs text-muted-foreground">
+   384→            The full Desi Hip-Hop scene — DIVINE, Seedhe Maut, KR$NA, MC Stan, Emiway Bantai, Hanumankind, Brodha V, Sidhu Moose Wala, Karan Aujla, Raja Kumari and more — as <strong>official full-length 320 kbps JioSaavn streams</strong>, plus complete iTunes India discographies.
+   385→          </p>
+   386→          {iRap?.running && iRap.total > 0 && (
+   387→            <div className="mt-3 space-y-1.5">
+   388→              <Progress value={(iRap.done / iRap.total) * 100} className="h-2" aria-label="Indian rap sync progress" />
+   389→              <p className="text-xs text-amber-400" aria-live="polite">
+   390→                {iRap.done}/{iRap.total} acts · +{iRap.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   391→                {iRap.current ? ` · now: ${iRap.current}` : ''}
+   392→              </p>
+   393→            </div>
+   394→          )}
+   395→        </div>
+   396→
+   397→        {/* Full-song conversion — no more 30-second previews */}
+   398→        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+   399→          <div className="flex flex-wrap items-center gap-3">
+   400→            <Button
+   401→              onClick={runFullSongs}
+   402→              disabled={fullSyncing || !!fullSweep?.running}
+   403→              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+   404→            >
+   405→              {fullSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Zap className="h-4 w-4" aria-hidden />}
+   406→              {fullSweep?.running ? 'Converting to full songs…' : 'Convert all previews to full songs'}
+   407→            </Button>
+   408→            {sync && typeof sync.fullLength === 'number' && typeof sync.previewCount === 'number' && (
+   409→              <p className="text-xs text-muted-foreground">
+   410→                <span className="text-emerald-400">{sync.fullLength.toLocaleString()} full-length</span> · {sync.previewCount.toLocaleString()} previews left
+   411→              </p>
+   412→            )}
+   413→          </div>
+   414→          <p className="mt-2 text-xs text-muted-foreground">
+   415→            Upgrades every 30-second preview to a full-length 320 kbps stream — official JioSaavn masters and Audius full tracks. Also happens automatically the moment you play a song.
+   416→          </p>
+   417→          {fullSweep?.running && fullSweep.total > 0 && (
+   418→            <div className="mt-3 space-y-1.5">
+   419→              <Progress value={(fullSweep.done / fullSweep.total) * 100} className="h-2" aria-label="Full-song sweep progress" />
+   420→              <p className="text-xs text-emerald-400" aria-live="polite">
+   421→                {fullSweep.done.toLocaleString()}/{fullSweep.total.toLocaleString()} checked · {fullSweep.added.toLocaleString()} upgraded to full
+   422→                {fullSweep.current ? ` · now: ${fullSweep.current}` : ''}
+   423→              </p>
+   424→            </div>
+   425→          )}
+   426→        </div>
+   427→
+   428→        {/* Discography completion — every album, every song for under-covered artists */}
+   429→        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+   430→          <div className="flex flex-wrap items-center gap-3">
+   431→            <Button
+   432→              onClick={completeDiscographies}
+   433→              disabled={deepSyncing || !!deepSweep?.running}
+   434→              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+   435→            >
+   436→              {deepSweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Disc3 className="h-4 w-4" aria-hidden />}
+   437→              {deepSweep?.running ? 'Completing discographies…' : 'Complete all artist discographies'}
+   438→            </Button>
+   439→            {sync && typeof sync.thinArtists === 'number' && (
+   440→              <p className="text-xs text-muted-foreground">
+   441→                {sync.thinArtists.toLocaleString()} artists need more songs
+   442→                {sync.deepCrawledArtists ? ` · ${sync.deepCrawledArtists.toLocaleString()} discographies completed` : ''}
+   443→              </p>
+   444→            )}
+   445→          </div>
+   446→          <p className="mt-2 text-xs text-muted-foreground">
+   447→            Walks every artist’s full album list and pulls <strong>every song on every album</strong> — no more one-song artists. Runs thinnest artists first and resumes where it left off.
+   448→          </p>
+   449→          {deepSweep?.running && deepSweep.total > 0 && (
+   450→            <div className="mt-3 space-y-1.5">
+   451→              <Progress value={(deepSweep.done / deepSweep.total) * 100} className="h-2" aria-label="Discography sweep progress" />
+   452→              <p className="text-xs text-emerald-400" aria-live="polite">
+   453→                {deepSweep.done}/{deepSweep.total} artists · +{deepSweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   454→                {deepSweep.current ? ` · now: ${deepSweep.current}` : ''}
+   455→              </p>
+   456→            </div>
+   457→          )}
+   458→        </div>
+   459→
+   460→        {/* Artist & band expansion — every major act, every genre */}
+   461→        <div className="mt-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+   462→          <div className="flex flex-wrap items-center gap-3">
+   463→            <Button
+   464→              onClick={expandArtists}
+   465→              disabled={expanding || !!sweep?.running}
+   466→              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+   467→            >
+   468→              {sweep?.running ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Users className="h-4 w-4" aria-hidden />}
+   469→              {sweep?.running ? 'Sweeping…' : 'Add all bands & artists'}
+   470→            </Button>
+   471→            {sync && typeof sync.sweptArtists === 'number' && sync.sweptArtists > 0 && !sweep?.running && (
+   472→              <p className="text-xs text-muted-foreground">{sync.sweptArtists.toLocaleString()} artists swept so far</p>
+   473→            )}
+   474→          </div>
+   475→          <p className="mt-2 text-xs text-muted-foreground">
+   476→            Pulls songs from ~900 legendary bands & artists — Rock, Metal, Pop, Hip-Hop, K-Pop, J-Pop, Bollywood, Latin, Afrobeats, Classical and 20+ more scenes. Resumes where it left off.
+   477→          </p>
+   478→          {sweep?.running && sweep.total > 0 && (
+   479→            <div className="mt-3 space-y-1.5">
+   480→              <Progress value={(sweep.done / sweep.total) * 100} className="h-2" aria-label="Artist sweep progress" />
+   481→              <p className="text-xs text-emerald-400" aria-live="polite">
+   482→                {sweep.done}/{sweep.total} artists · +{sweep.added.toLocaleString()} songs{sync ? ` · ${sync.total.toLocaleString()} total` : ''}
+   483→                {sweep.current ? ` · now: ${sweep.current}` : ''}
+   484→              </p>
+   485→            </div>
+   486→          )}
+   487→        </div>
+   488→        {sync && sync.logs.length > 0 && (
+   489→          <div className="mt-4 max-h-56 overflow-y-auto rounded-lg border border-border/40">
+   490→            <table className="w-full text-left text-xs">
+   491→              <thead className="sticky top-0 bg-black/80 text-muted-foreground">
+   492→                <tr>
+   493→                  <th className="px-3 py-2 font-medium">Source</th>
+   494→                  <th className="px-3 py-2 font-medium">Scope</th>
+   495→                  <th className="px-3 py-2 text-right font-medium">Fetched</th>
+   496→                  <th className="px-3 py-2 text-right font-medium">Added</th>
+   497→                  <th className="px-3 py-2 text-right font-medium">When</th>
+   498→                </tr>
+   499→              </thead>
+   500→              <tbody>
+   501→                {sync.logs.slice(0, 15).map((l) => (
+   502→                  <tr key={l.id} className="border-t border-border/30">
+   503→                    <td className="px-3 py-1.5">{l.source}</td>
+   504→                    <td className="px-3 py-1.5">{l.scope}</td>
+   505→                    <td className="px-3 py-1.5 text-right tabular-nums">{l.fetched}</td>
+   506→                    <td className="px-3 py-1.5 text-right tabular-nums text-emerald-400">+{l.added}</td>
+   507→                    <td className="px-3 py-1.5 text-right text-muted-foreground">
+   508→                      {new Date(l.syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+   509→                    </td>
+   510→                  </tr>
+   511→                ))}
+   512→              </tbody>
+   513→            </table>
+   514→          </div>
+   515→        )}
+   516→      </section>
+   517→
+   518→      {/* Sleep timer */}
+   519→      <section aria-label="Sleep timer" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   520→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   521→          <Timer className="h-4 w-4" aria-hidden /> Sleep timer
+   522→        </h2>
+   523→        <div className="flex flex-wrap items-center gap-2">
+   524→          {[5, 10, 15, 30, 45, 60].map((m) => (
+   525→            <Button
+   526→              key={m}
+   527→              size="sm"
+   528→              variant="outline"
+   529→              onClick={() => { player.startSleepTimer(m); toast(`Music stops in ${m} minutes`) }}
+   530→            >
+   531→              {m} min
+   532→            </Button>
+   533→          ))}
+   534→          <Button size="sm" variant="ghost" onClick={() => { player.startSleepTimer(0); toast('Sleep timer off') }}>
+   535→            Off
+   536→          </Button>
+   537→          {player.sleepAt && (
+   538→            <span className="text-xs text-emerald-400">Stops at {new Date(player.sleepAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+   539→          )}
+   540→        </div>
+   541→        <p className="mt-2 text-xs text-muted-foreground">Volume fades out gently over the last 20 seconds.</p>
+   542→      </section>
+   543→
+   544→      {/* Android app */}
+   545→      <section aria-label="Android app" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   546→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   547→          <Smartphone className="h-4 w-4" aria-hidden /> Android app
+   548→        </h2>
+   549→        <div className="flex flex-wrap items-center gap-3">
+   550→          <Button
+   551→            size="sm"
+   552→            className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+   553→            onClick={() => {
+   554→              const a = document.createElement('a')
+   555→              a.href = '/walkman.apk'
+   556→              a.download = 'walkman.apk'
+   557→              document.body.appendChild(a)
+   558→              a.click()
+   559→              a.remove()
+   560→              toast('Downloading the Walkman APK…')
+   561→            }}
+   562→          >
+   563→            <Download className="h-4 w-4" aria-hidden /> Download APK
+   564→          </Button>
+   565→          <p className="text-xs text-muted-foreground">
+   566→            Install on your phone: open this link on the device, allow “install unknown apps” for your browser, then install. In the app, point it at this server URL.
+   567→          </p>
+   568→        </div>
+   569→      </section>
+   570→
+   571→      {/* Shortcuts */}
+   572→      <section aria-label="Keyboard shortcuts" className="rounded-xl border border-border/50 bg-black/30 p-5">
+   573→        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+   574→          <Keyboard className="h-4 w-4" aria-hidden /> Keyboard shortcuts
+   575→        </h2>
+   576→        <div className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+   577→          {[
+   578→            ['Space', 'Play / pause'],
+   579→            ['← / →', 'Seek 5s'],
+   580→            ['Shift + ← / →', 'Previous / next track'],
+   581→            ['↑ / ↓', 'Volume'],
+   582→            ['M', 'Mute'],
+   583→            ['S', 'Shuffle'],
+   584→            ['R', 'Repeat'],
+   585→            ['Q', 'Queue panel'],
+   586→            ['L', 'Lyrics panel'],
+   587→            ['N', 'Fullscreen player'],
+   588→            ['/', 'Focus search'],
+   589→          ].map(([k, v]) => (
+   590→            <div key={k} className="flex items-center justify-between gap-4 border-b border-border/30 py-1.5 last:border-0">
+   591→              <span className="text-muted-foreground">{v}</span>
+   592→              <kbd className="rounded border border-border bg-black/50 px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+   593→            </div>
+   594→          ))}
+   595→        </div>
+   596→      </section>
+   597→    </div>
+   598→  )
+   599→}
+   600→

@@ -102,13 +102,13 @@ export function TrackList({ tracks, contextTitle, showAlbum = true, showIndex = 
                   )}
                 </div>
                 <div className="min-w-0">
-                  <div className={cn('flex items-center gap-1.5 truncate font-medium', isCurrent && 'text-emerald-400')}>
+                  <div className={cn('flex items-center gap-1.5 truncate font-medium', isCurrent && 'text-[#1ed760]')}>
                     <span className="truncate">{t.title}</span>
                     {t.explicit && (
                       <span className="rounded-sm bg-muted-foreground/30 px-1 text-[9px] font-bold uppercase leading-4 text-muted-foreground">E</span>
                     )}
                     {t.hasFull && (
-                      <span className="hidden rounded-sm border border-emerald-500/50 px-1 text-[9px] font-semibold uppercase leading-4 text-emerald-400 sm:inline" title={`Full-length track — ${t.bitrateKbps} kbps`}>Full</span>
+                      <span className="hidden rounded-sm border border-[#1db954]/50 px-1 text-[9px] font-semibold uppercase leading-4 text-[#1ed760] sm:inline" title={`Full-length track — ${t.bitrateKbps} kbps`}>Full</span>
                     )}
                     {t.language && t.language !== 'Unknown' && (
                       <span className="hidden rounded-sm bg-white/10 px-1 text-[9px] font-medium leading-4 text-muted-foreground lg:inline" title={`Language: ${t.language}`}>{t.language}</span>
@@ -139,10 +139,10 @@ export function TrackList({ tracks, contextTitle, showAlbum = true, showIndex = 
                 )}
                 <button
                   aria-label={liked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
-                  className={cn('rounded-full p-1.5 transition-colors hover:bg-white/10 md:opacity-0 md:group-hover:opacity-100', liked && 'text-emerald-400 md:opacity-100')}
+                  className={cn('rounded-full p-1.5 transition-colors hover:bg-white/10 md:opacity-0 md:group-hover:opacity-100', liked && 'text-[#1ed760] md:opacity-100')}
                   onClick={(e) => { e.stopPropagation(); toggleLike(t.id) }}
                 >
-                  <Heart className={cn('h-4 w-4', liked && 'fill-emerald-400')} aria-hidden />
+                  <Heart className={cn('h-4 w-4', liked && 'fill-[#1ed760]')} aria-hidden />
                 </button>
                 <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">{fmtTime(t.durationMs)}</span>
                 <DropdownMenu>
@@ -218,7 +218,7 @@ export function EqBars() {
   return (
     <span className="flex h-3.5 w-4 items-end justify-center gap-[2px] eq-bars" aria-label="Playing">
       {[0, 1, 2].map((i) => (
-        <span key={i} className="w-[3px] rounded-sm bg-emerald-400" style={{
+        <span key={i} className="w-[3px] rounded-sm bg-[#1ed760]" style={{
           height: '60%',
           animationDelay: `${i * 180}ms`,
         }} />

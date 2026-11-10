@@ -39,14 +39,32 @@ export function PlayerBar() {
 
   const pos = scrubbing ?? position
 
+  // mobile: hide the bar entirely when nothing is loaded — reclaim screen space
   return (
-    <footer className="relative z-40 mt-auto border-t border-border/50 bg-black/60 backdrop-blur-xl">
-      {/* mobile progress line */}
-      <div className="h-[2px] w-full bg-white/10 md:hidden">
-        <div className="h-full bg-emerald-400 transition-all" style={{ width: `${duration ? (pos / duration) * 100 : 0}%` }} />
+    <footer className={cn('relative z-40 mt-auto px-2 pb-2 md:border-t md:border-border/50 md:bg-black/60 md:px-0 md:pb-0 md:backdrop-blur-xl', !track && 'hidden md:block')}>
+      {/* Spotify-style floating mini-player pill on mobile, flat bar on desktop */}
+      <div className="overflow-hidden rounded-lg bg-muted shadow-lg shadow-black/40 md:rounded-none md:bg-transparent md:shadow-none">
+      {/* mobile progress strip — tap to seek */}
+      <div
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(duration)}
+        aria-valuenow={Math.round(pos)}
+        tabIndex={0}
+        className="flex h-4 w-full items-center px-3 md:hidden"
+        onClick={(e) => onSeek(e.clientX)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') seek(Math.min(position + 5, duration))
+          if (e.key === 'ArrowLeft') seek(Math.max(position - 5, 0))
+        }}
+      >
+        <div className="relative h-1 w-full rounded-full bg-white/15">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-[#1ed760]" style={{ width: `${duration ? (pos / duration) * 100 : 0}%` }} />
+        </div>
       </div>
 
-      <div className="mx-auto grid h-16 max-w-full grid-cols-[1fr_auto] items-center gap-2 px-3 md:h-[72px] md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] md:gap-4 md:px-4">
+      <div className="mx-auto grid h-14 max-w-full grid-cols-[1fr_auto] items-center gap-1 px-2 md:h-[72px] md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] md:gap-4 md:px-4">
         {/* Track info */}
         <div className="flex min-w-0 items-center gap-3">
           {track ? (
@@ -74,10 +92,10 @@ export function PlayerBar() {
               </div>
               <button
                 aria-label={likedIds.has(track.id) ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
-                className={cn('hidden shrink-0 rounded-full p-1.5 hover:bg-white/10 sm:block', likedIds.has(track.id) ? 'text-emerald-400' : 'text-muted-foreground')}
+                className={cn('shrink-0 rounded-full p-2 hover:bg-white/10 active:bg-white/10', likedIds.has(track.id) ? 'text-[#1ed760]' : 'text-muted-foreground')}
                 onClick={() => toggleLike(track.id)}
               >
-                <Heart className={cn('h-4 w-4', likedIds.has(track.id) && 'fill-emerald-400')} aria-hidden />
+                <Heart className={cn('h-4 w-4', likedIds.has(track.id) && 'fill-[#1ed760]')} aria-hidden />
               </button>
             </>
           ) : (
@@ -88,14 +106,15 @@ export function PlayerBar() {
               <span className="hidden sm:inline">Pick a song to start listening</span>
             </div>
           )}
+          {/* keeps the like button inside the info cell on mobile */}
         </div>
 
         {/* Transport */}
-        <div className="flex items-center justify-end gap-1 md:justify-center">
+        <div className="flex touch-manipulation items-center justify-end gap-0.5 md:justify-center md:gap-1">
           <button
             aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'}
             aria-pressed={shuffle}
-            className={cn('hidden rounded-full p-2 hover:bg-white/10 md:block', shuffle ? 'text-emerald-400' : 'text-muted-foreground')}
+            className={cn('hidden rounded-full p-2 hover:bg-white/10 md:block', shuffle ? 'text-[#1ed760]' : 'text-muted-foreground')}
             onClick={toggleShuffle}
           >
             <Shuffle className="h-4 w-4" aria-hidden />
@@ -116,7 +135,7 @@ export function PlayerBar() {
           </button>
           <button
             aria-label={`Repeat: ${repeat}`}
-            className={cn('hidden rounded-full p-2 hover:bg-white/10 md:block', repeat !== 'off' ? 'text-emerald-400' : 'text-muted-foreground')}
+            className={cn('hidden rounded-full p-2 hover:bg-white/10 md:block', repeat !== 'off' ? 'text-[#1ed760]' : 'text-muted-foreground')}
             onClick={cycleRepeat}
           >
             {repeat === 'one' ? <Repeat1 className="h-4 w-4" aria-hidden /> : <Repeat className="h-4 w-4" aria-hidden />}
@@ -127,7 +146,7 @@ export function PlayerBar() {
         <div className="hidden items-center justify-end gap-1.5 md:flex">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button aria-label="Sleep timer" className={cn('rounded-full p-2 hover:bg-white/10', sleepAt ? 'text-emerald-400' : 'text-muted-foreground')}>
+              <button aria-label="Sleep timer" className={cn('rounded-full p-2 hover:bg-white/10', sleepAt ? 'text-[#1ed760]' : 'text-muted-foreground')}>
                 <Timer className="h-4 w-4" aria-hidden />
               </button>
             </DropdownMenuTrigger>
@@ -144,7 +163,7 @@ export function PlayerBar() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button aria-label="Playback speed" className={cn('rounded-full px-1.5 py-2 text-[11px] font-semibold hover:bg-white/10', speed !== 1 ? 'text-emerald-400' : 'text-muted-foreground')}>
+              <button aria-label="Playback speed" className={cn('rounded-full px-1.5 py-2 text-[11px] font-semibold hover:bg-white/10', speed !== 1 ? 'text-[#1ed760]' : 'text-muted-foreground')}>
                 {speed}×
               </button>
             </DropdownMenuTrigger>
@@ -160,14 +179,14 @@ export function PlayerBar() {
 
           <button
             aria-label="Toggle lyrics panel"
-            className={cn('rounded-full p-2 hover:bg-white/10', rightPanel === 'lyrics' ? 'text-emerald-400' : 'text-muted-foreground')}
+            className={cn('rounded-full p-2 hover:bg-white/10', rightPanel === 'lyrics' ? 'text-[#1ed760]' : 'text-muted-foreground')}
             onClick={toggleLyrics}
           >
             <MicVocal className="h-4 w-4" aria-hidden />
           </button>
           <button
             aria-label="Toggle queue panel"
-            className={cn('rounded-full p-2 hover:bg-white/10', rightPanel === 'queue' ? 'text-emerald-400' : 'text-muted-foreground')}
+            className={cn('rounded-full p-2 hover:bg-white/10', rightPanel === 'queue' ? 'text-[#1ed760]' : 'text-muted-foreground')}
             onClick={toggleQueue}
           >
             <ListMusic className="h-4 w-4" aria-hidden />
@@ -188,6 +207,7 @@ export function PlayerBar() {
           </div>
         </div>
       </div>
+      </div>
 
       {/* Desktop progress bar overlay */}
       <div
@@ -206,27 +226,10 @@ export function PlayerBar() {
         }}
       >
         <div className="relative h-1 w-full rounded-full bg-white/15 transition-colors group-hover:h-1.5">
-          <div className="absolute inset-y-0 left-0 rounded-full bg-emerald-400" style={{ width: `${duration ? (pos / duration) * 100 : 0}%` }} />
-          <span className="absolute -top-[3px] hidden h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-emerald-300 group-hover:block" style={{ left: `${duration ? (pos / duration) * 100 : 0}%` }} />
+          <div className="absolute inset-y-0 left-0 rounded-full bg-[#1ed760]" style={{ width: `${duration ? (pos / duration) * 100 : 0}%` }} />
+          <span className="absolute -top-[3px] hidden h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-[#1ed760] group-hover:block" style={{ left: `${duration ? (pos / duration) * 100 : 0}%` }} />
         </div>
         <span className="pointer-events-none absolute right-2 -top-5 text-[10px] tabular-nums text-muted-foreground">{fmtTime(pos * 1000)} / {fmtTime(duration * 1000)}</span>
-      </div>
-
-      {/* Mobile mini-transport */}
-      <div className="flex items-center justify-between px-4 pb-2 md:hidden">
-        <span className="text-[10px] tabular-nums text-muted-foreground">{fmtTime(pos * 1000)}</span>
-        <div className="flex gap-4">
-          <button aria-label="Shuffle" className={cn(shuffle ? 'text-emerald-400' : 'text-muted-foreground')} onClick={toggleShuffle}>
-            <Shuffle className="h-4 w-4" aria-hidden />
-          </button>
-          <button aria-label="Queue" className={cn(rightPanel === 'queue' ? 'text-emerald-400' : 'text-muted-foreground')} onClick={toggleQueue}>
-            <ListMusic className="h-4 w-4" aria-hidden />
-          </button>
-          <button aria-label="Fullscreen" className="text-muted-foreground" onClick={() => setFullscreen(true)}>
-            <Maximize2 className="h-4 w-4" aria-hidden />
-          </button>
-        </div>
-        <span className="text-[10px] tabular-nums text-muted-foreground">{fmtTime(duration * 1000)}</span>
       </div>
 
       {/* queue reorder accessible list (sr-only summary) */}

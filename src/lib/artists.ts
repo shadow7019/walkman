@@ -1371,6 +1371,51 @@ const INDIA: ArtistEntry[] = [
   E('Sunidhi Chauhan', 'Bollywood', 'Hindi', 'IN', 60),
 ]
 
+// ── Indian rap / Desi Hip-Hop (gully rap, Punjabi rap, South DHH) ──
+// The full scene: Mumbai gully pioneers, Delhi Azadi Records crew,
+// Punjabi rap legends, South Indian rappers and pop-rap crossovers.
+export const INDIAN_RAP: ArtistEntry[] = [
+  // gully rap & Hindi DHH core
+  E('DIVINE', 'Hip-Hop', 'Hindi', 'IN', 120),
+  E('Naezy', 'Hip-Hop', 'Hindi', 'IN', 80),
+  E('Seedhe Maut', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('KR$NA', 'Hip-Hop', 'Hindi', 'IN', 80),
+  E('Emiway Bantai', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('MC Stan', 'Hip-Hop', 'Hindi', 'IN', 80),
+  E('Ikka', 'Hip-Hop', 'Hindi', 'IN', 80),
+  E('Lil Golu', 'Hip-Hop', 'Hindi', 'IN', 60),
+  E('Karma', 'Hip-Hop', 'Hindi', 'IN', 60),
+  E('Prabh Deep', 'Hip-Hop', 'Hindi', 'IN', 60),
+  E('Yungsta', 'Hip-Hop', 'Hindi', 'IN', 50),
+  E('Frappe Ash', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Rawal', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Yashraj', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Dhanji', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Kaam Bhaari', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Spitfire', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('King', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('Raftaar', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('Badshah', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('Yo Yo Honey Singh', 'Hip-Hop', 'Hindi', 'IN', 100),
+  E('Baba Sehgal', 'Hip-Hop', 'Hindi', 'IN', 50),
+  // Punjabi rap
+  E('Bohemia', 'Hip-Hop', 'Punjabi', 'IN', 80),
+  E('Sidhu Moose Wala', 'Hip-Hop', 'Punjabi', 'IN', 100),
+  E('Karan Aujla', 'Hip-Hop', 'Punjabi', 'IN', 100),
+  E('Shubh', 'Hip-Hop', 'Punjabi', 'IN', 80),
+  E('Varinder Brar', 'Hip-Hop', 'Punjabi', 'IN', 40),
+  E('Talwiinder', 'Hip-Hop', 'Punjabi', 'IN', 50),
+  // South Indian & English DHH
+  E('Brodha V', 'Hip-Hop', 'English', 'IN', 60),
+  E('Hanumankind', 'Hip-Hop', 'English', 'IN', 60),
+  E('Arivu', 'Hip-Hop', 'Tamil', 'IN', 40),
+  E('Paal Dabba', 'Hip-Hop', 'Tamil', 'IN', 40),
+  // women of DHH & crossover
+  E('Raja Kumari', 'Hip-Hop', 'Hindi', 'IN', 60),
+  E('SIRI', 'Hip-Hop', 'Hindi', 'IN', 40),
+  E('Deane', 'Hip-Hop', 'Hindi', 'IN', 40),
+]
+
 // ── K-Pop ─────────────────────────────────────────────────────
 const KPOP: ArtistEntry[] = [
   E('BTS', 'K-Pop', 'Korean', 'KR', 200),
@@ -1966,6 +2011,6 @@ export const ARTIST_ROSTER: ArtistEntry[] = dedupe([
   ...ROCK_CLASSIC, ...ROCK_80S, ...ROCK_90S, ...ROCK_MODERN,
   ...METAL, ...PUNK_EMO, ...POP, ...HIPHOP, ...RNB_SOUL,
   ...ELECTRONIC, ...JAZZ_BLUES, ...CLASSICAL, ...COUNTRY_FOLK,
-  ...REGGAE, ...INDIA, ...KPOP, ...JPOP, ...MANDOPOP,
+  ...REGGAE, ...INDIA, ...INDIAN_RAP, ...KPOP, ...JPOP, ...MANDOPOP,
   ...LATIN, ...EUROPE, ...AFRICA, ...MENA, ...SEA, ...BRASIL,
 ])

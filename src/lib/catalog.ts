@@ -8,15 +8,22 @@ import { db } from '@/lib/db'
 import { canonicalGenre, canonicalMood } from '@/lib/genre'
 import { trending, underground, byGenre, searchTracks, artworkUrl, type AudiusTrack } from '@/lib/audius'
 import { itunesSearch, itunesAlbumSearch, itunesLookupSongs, artwork600, type iTunesTrack, type iTunesAlbum } from '@/lib/itunes'
-import { matchSaavnTrack } from '@/lib/saavn'
-import { ARTIST_ROSTER, type ArtistEntry } from '@/lib/artists'
+import { matchSaavnTrack, saavnArtistSongs, type SaavnSong } from '@/lib/saavn'
+import { ARTIST_ROSTER, INDIAN_RAP, type ArtistEntry } from '@/lib/artists'
 import {
   SPOTIFY_AUTO_PLAYLISTS,
   SPOTIFY_FLAGSHIP,
   fetchSpotifyPlaylistData,
   type SpotifyAutoPlaylist,
-  type SpotifySyncProgress,
 } from '@/lib/spotify'
+
+export interface SpotifySyncProgress {
+  running: boolean
+  done: number
+  total: number
+  added: number
+  current: string
+}
 
 export interface CatalogUpsert {
   title: string
@@ -92,7 +99,7 @@ export async function upsertTrack(t: CatalogUpsert): Promise<'added' | 'updated'
       patch.hasFull = true
       patch.bitrateKbps = Math.max(similar.bitrateKbps, t.bitrateKbps || 0)
       patch.qualityTier = 'HI-FI'
-      patch.source = 'audius'
+      patch.source = t.source
       patch.sourceId = t.sourceId
     } else if (!similar.hasFull && t.previewUrl && !similar.previewUrl) {
       patch.previewUrl = t.previewUrl
@@ -377,8 +384,6 @@ export async function sweepArtists(onProgress?: (p: SweepProgress) => void, rost
 
 // --- Spotify auto-add: official charts & editorial playlists → real library tracks ---
 
-export type { SpotifySyncProgress }
-
 // Try to find the exact song in the iTunes industry catalog (cover art, 256 kbps
 // preview, year, genre). Accepts only confident matches.
 async function itunesMatchTrack(title: string, artist: string): Promise<iTunesTrack | null> {
@@ -492,18 +497,37 @@ export interface DeepSweepProgress {
   current: string
 }
 
+// Strict album-artist credit: exact name, or a collab credit that continues
+// with a separator ("Artist & other", "Artist feat. X", "Artist, X", "Artist x X").
+// Keeps short/ambiguous names ("King", "Karma") from swallowing other acts.
+function creditIs(name: string, target: string): boolean {
+  const n = fold(name).trim()
+  const t = fold(target).trim()
+  if (n === t) return true
+  if (!t.startsWith(n)) return false
+  const rest = t.slice(n.length).trimStart()
+  return /^([&x,+\-]|feat|with|vs\b)/.test(rest)
+}
+
 // Crawl one artist's complete discography: album search → per-album song lookup.
 // Returns the number of songs added. Pass `keySet` (from deepArtistsSync) to
 // reuse a preloaded dedupe index instead of reloading the library per artist.
+// `strict` prefers exact album-artist credits (falls back to loose matching if
+// nothing matches — keeps uncommon credit variants discoverable).
 export async function deepCrawlArtist(
   name: string,
-  opts: { maxAlbums?: number; country?: string; genre?: string; language?: string; keySet?: Set<string> } = {},
+  opts: { maxAlbums?: number; country?: string; genre?: string; language?: string; keySet?: Set<string>; strict?: boolean } = {},
 ): Promise<number> {
   const maxAlbums = opts.maxAlbums ?? 50
   const albumsRaw = await itunesAlbumSearch({ term: name, attribute: 'artistTerm', country: opts.country, limit: 200 })
   // keep albums actually credited to this act, newest first
-  const albums = albumsRaw
+  let albums = albumsRaw
     .filter((a: iTunesAlbum) => nameMatches(name, a.artistName))
+  if (opts.strict) {
+    const exact = albums.filter((a: iTunesAlbum) => creditIs(name, a.artistName))
+    if (exact.length) albums = exact
+  }
+  albums = albums
     .sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
     .slice(0, maxAlbums)
 
@@ -518,7 +542,7 @@ export async function deepCrawlArtist(
   for (const album of albums) {
     try {
       const songs = await itunesLookupSongs(album.collectionId, 200)
-      const mine = songs.filter((t) => nameMatches(name, t.artistName))
+      const mine = songs.filter((t) => (opts.strict ? creditIs(name, t.artistName) || nameMatches(name, t.artistName) : nameMatches(name, t.artistName)))
       for (const t of mine) {
         const key = `${norm(t.trackName)}|${norm(t.artistName)}`
         if (keys.has(key)) continue
@@ -596,6 +620,116 @@ export async function deepArtistsSync(
     }
     onProgress?.({ running: true, done: i + 1, total, added, current: name })
     await sleep(350)
+  }
+  onProgress?.({ running: false, done: total, total, added, current: '' })
+  return { added, scanned: total, skippedArtists }
+}
+
+// --- Indian rap / Desi Hip-Hop: the full scene, at full quality ---
+// Indian acts were landing as 30 s iTunes previews only. This pass sources
+// every scene artist from JioSaavn (official 320 kbps FULL streams) and then
+// completes their discography metadata via the iTunes India storefront.
+
+export interface IndianRapProgress {
+  running: boolean
+  done: number
+  total: number
+  added: number
+  current: string
+}
+
+const saavnLanguage = (l: string, fallback: string): string => {
+  const s = (l || '').toLowerCase().trim()
+  if (!s || s === 'unknown') return fallback
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function saavnToUpsert(s: SaavnSong, genre: string, language: string): CatalogUpsert {
+  return {
+    title: s.title,
+    artist: s.artist || 'Unknown Artist',
+    album: s.album || '',
+    genre,
+    rawGenre: 'Desi Hip-Hop',
+    language: saavnLanguage(s.language, language),
+    country: 'IN',
+    year: s.year,
+    durationMs: (s.durationSec || 0) * 1000,
+    cover: s.image,
+    source: 'saavn',
+    sourceId: s.id,
+    streamUrl: s.fullUrl320,
+    hasFull: true,
+    qualityTier: 'HI-FI',
+    bitrateKbps: 320,
+    releaseDate: s.year ? new Date(`${s.year}-01-01`) : null,
+  }
+}
+
+// Import the Indian rap scene. Resumable: acts synced in the last 24 h are
+// skipped unless the roster is passed explicitly. Per act:
+//   1) JioSaavn artist catalog → full-length 320 kbps HI-FI rows
+//   2) iTunes India discography (strict credit match) → albums & previews
+export async function indianRapSync(
+  onProgress?: (p: IndianRapProgress) => void,
+  roster: ArtistEntry[] = INDIAN_RAP,
+  opts: { force?: boolean } = {},
+): Promise<{ added: number; scanned: number; skippedArtists: number }> {
+  let added = 0
+  let skippedArtists = 0
+  const total = roster.length
+
+  // resume: acts handled in the last 24 h are skipped unless forced
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const recent = opts.force ? new Set<string>() : new Set(
+    (await db.syncLog.findMany({ where: { source: 'indian-rap', syncedAt: { gte: since } }, select: { scope: true } })).map((l) => l.scope),
+  )
+
+  // preload the dedupe index once for the whole run
+  const keys = new Set<string>()
+  const existingRows = await db.track.findMany({ select: { title: true, artist: true } })
+  for (const r of existingRows) keys.add(`${norm(r.title)}|${norm(r.artist)}`)
+
+  for (let i = 0; i < total; i++) {
+    const a = roster[i]
+    if (recent.has(a.name)) {
+      skippedArtists++
+      onProgress?.({ running: true, done: i + 1, total, added, current: a.name })
+      continue
+    }
+    try {
+      // 1) JioSaavn — official full-length streams (the quality win).
+      // Always route through upsertTrack: existing iTunes preview rows get
+      // upgraded to the 320 kbps full stream via cross-source dedupe.
+      let artistAdded = 0
+      const processed = new Set<string>() // same-run duplicate results only
+      const songs = await saavnArtistSongs(a.name, Math.min(a.limit, 50))
+      for (const s of songs) {
+        const key = `${norm(s.title)}|${norm(s.artist || '')}`
+        if (processed.has(key)) continue
+        processed.add(key)
+        const r = await upsertTrack(saavnToUpsert(s, a.genre, a.language))
+        if (r === 'added') artistAdded++
+      }
+      // 2) iTunes India — complete discography (previews + album metadata)
+      const crawled = await deepCrawlArtist(a.name, {
+        maxAlbums: 40,
+        country: a.country,
+        genre: a.genre,
+        language: a.language,
+        keySet: keys,
+        strict: true,
+      })
+      added += artistAdded + crawled
+      await db.syncLog.create({
+        data: { source: 'indian-rap', scope: a.name, fetched: songs.length, added: artistAdded + crawled, updated: 0, detail: `${a.language} · ${a.genre}` },
+      })
+      onProgress?.({ running: true, done: i + 1, total, added, current: a.name })
+    } catch {
+      await sleep(2500) // transient — not marked done, retried next run
+      continue
+    }
+    await sleep(500)
   }
   onProgress?.({ running: false, done: total, total, added, current: '' })
   return { added, scanned: total, skippedArtists }
@@ -705,7 +839,7 @@ export async function fullSongsSweep(onProgress?: (p: FullSweepProgress) => void
       onProgress?.({ running: true, done: scanned, total, added: converted, current: row.artist })
       await sleep(220) // gentle on upstream APIs
     }
-    await db.syncLog.create({ data: { source: 'fullsongs', scope: 'cursor', fetched: scanned, added: converted, updated: 0, detail: cursor } }).catch(() => {})
+    await db.syncLog.create({ data: { source: 'fullsongs', scope: 'cursor', fetched: scanned, added: converted, updated: 0, detail: cursor ?? '' } }).catch(() => {})
     if (scanned % (BATCH_LOG * 25) === 0) await sleep(1500)
   }
   onProgress?.({ running: false, done: scanned, total, added: converted, current: '' })

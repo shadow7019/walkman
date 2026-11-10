@@ -139,3 +139,43 @@ export async function matchSaavnTrack(title: string, artist: string): Promise<Sa
   }
   return best ? best.song : null
 }
+
+// General search — every result that decrypts to a real 320 kbps stream.
+// Used for scene fan-outs ("Desi Hip Hop", city cyphers, label compilations…).
+export async function saavnSearchSongs(query: string, limit = 30): Promise<SaavnSong[]> {
+  if (!query) return []
+  let results: SaavnRawSong[]
+  try {
+    results = await saavnApi('search.getResults', { q: query, n: String(Math.min(limit, 50)) })
+  } catch {
+    return []
+  }
+  const out: SaavnSong[] = []
+  for (const raw of results) {
+    const song = toSong(raw)
+    if (song?.fullUrl320) out.push(song)
+  }
+  return out
+}
+
+// Every song JioSaavn indexes for one artist (their search index doubles as the
+// artist's top-catalog). Strict token verification keeps soundalikes out.
+export async function saavnArtistSongs(artist: string, limit = 40): Promise<SaavnSong[]> {
+  if (!artist) return []
+  const at = tokens(artist)
+  let results: SaavnRawSong[]
+  try {
+    results = await saavnApi('search.getResults', { q: artist, n: String(Math.min(limit, 50)) })
+  } catch {
+    return []
+  }
+  const out: SaavnSong[] = []
+  for (const raw of results) {
+    const song = toSong(raw)
+    if (!song?.fullUrl320 || !song.artist) continue
+    const sa = foldName(song.artist)
+    const credited = at.length > 0 && at.every((t) => sa.includes(t))
+    if (credited) out.push(song)
+  }
+  return out
+}

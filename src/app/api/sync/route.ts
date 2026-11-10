@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { syncCatalog, globalSeed, sweepArtists, spotifySync, deepArtistsSync, deepCrawlArtist, fullSongsSweep, type SweepProgress, type SpotifySyncProgress, type DeepSweepProgress, type FullSweepProgress } from '@/lib/catalog'
+import { syncCatalog, globalSeed, sweepArtists, spotifySync, deepArtistsSync, deepCrawlArtist, indianRapSync, fullSongsSweep, type SweepProgress, type SpotifySyncProgress, type DeepSweepProgress, type IndianRapProgress, type FullSweepProgress } from '@/lib/catalog'
 import { SPOTIFY_AUTO_PLAYLISTS, SPOTIFY_FLAGSHIP } from '@/lib/spotify'
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +16,8 @@ const g = globalThis as unknown as {
   __deepSweep?: DeepSweepProgress
   __fullSweeping?: boolean
   __fullSweep?: FullSweepProgress
+  __indianRapping?: boolean
+  __indianRap?: IndianRapProgress
 }
 
 async function thinArtistCount(): Promise<number> {
@@ -31,6 +33,7 @@ export async function GET() {
   const last = logs[0]?.syncedAt ?? null
   const sweepLogs = await db.syncLog.findMany({ where: { source: 'artist-sweep' }, select: { scope: true } })
   const deepLogs = await db.syncLog.count({ where: { source: 'artist-deep' } })
+  const indianRapLogs = await db.syncLog.findMany({ where: { source: 'indian-rap' }, orderBy: { syncedAt: 'desc' } })
   const fullLength = await db.track.count({ where: { hasFull: true } })
   const previewCount = await db.track.count({ where: { hasFull: false } })
   return NextResponse.json({
@@ -38,7 +41,7 @@ export async function GET() {
     total,
     artistCount: artists.length,
     lastSyncedAt: last,
-    seeding: !!g.__walkmanSeeding || !!g.__spotifySeeding || !!g.__deepSweeping || !!g.__fullSweeping,
+    seeding: !!g.__walkmanSeeding || !!g.__spotifySeeding || !!g.__deepSweeping || !!g.__fullSweeping || !!g.__indianRapping,
     artistSweep: g.__artistSweep ?? { running: false, done: sweepLogs.length, total: 0, added: 0, current: '' },
     sweptArtists: sweepLogs.length,
     spotifySync: g.__spotifySync ?? { running: false, done: 0, total: 0, added: 0, current: '' },
@@ -46,6 +49,8 @@ export async function GET() {
     deepSweep: g.__deepSweep ?? { running: false, done: deepLogs, total: 0, added: 0, current: '' },
     deepCrawledArtists: deepLogs,
     thinArtists: await thinArtistCount(),
+    indianRap: g.__indianRap ?? { running: false, done: indianRapLogs.length, total: 0, added: indianRapLogs.reduce((s, l) => s + l.added, 0), current: '' },
+    indianRapArtists: indianRapLogs.length,
     fullSweep: g.__fullSweep ?? { running: false, done: 0, total: previewCount, added: 0, current: '' },
     fullLength,
     previewCount,
@@ -59,10 +64,11 @@ export async function GET() {
 //   { mode: 'spotify' }        — sync every official Spotify chart/editorial playlist (resumable), background
 //   { mode: 'artist-deep', artist } — complete ONE artist's discography (every album, every song)
 //   { mode: 'deep-artists' }   — complete discographies for every under-covered artist (resumable), background
+//   { mode: 'indian-rap' }     — the full Desi Hip-Hop scene: JioSaavn 320 kbps full streams + iTunes discographies, background
 //   { mode: 'fullsongs' }      — convert all 30s previews to full-length 320 kbps streams (resumable), background
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
-  const mode = ['global', 'artists', 'spotify', 'artist-deep', 'deep-artists', 'fullsongs'].includes(body.mode)
+  const mode = ['global', 'artists', 'spotify', 'artist-deep', 'deep-artists', 'indian-rap', 'fullsongs'].includes(body.mode)
     ? body.mode
     : 'refresh'
 
@@ -86,8 +92,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, started: true, message: 'Full-song conversion sweep started' })
   }
 
-  if (g.__walkmanSeeding || g.__spotifySeeding || g.__deepSweeping) {
+  if (g.__walkmanSeeding || g.__spotifySeeding || g.__deepSweeping || g.__indianRapping) {
     return NextResponse.json({ ok: true, started: false, message: 'A catalog sweep is already running' })
+  }
+
+  if (mode === 'indian-rap') {
+    g.__indianRapping = true
+    g.__indianRap = { running: true, done: 0, total: 0, added: 0, current: 'Starting…' }
+    void (async () => {
+      try {
+        await indianRapSync((p) => { g.__indianRap = p })
+      } catch (e) {
+        console.error('indian rap sync failed', e)
+      } finally {
+        g.__indianRapping = false
+      }
+    })()
+    return NextResponse.json({ ok: true, started: true, message: 'Desi Hip-Hop scene sync started' })
   }
 
   if (mode === 'artist-deep') {

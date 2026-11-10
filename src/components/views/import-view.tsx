@@ -73,7 +73,7 @@ export function ImportView() {
           <Button
             disabled={busy || !spotifyUrl.trim()}
             onClick={() => run(() => api.importSpotify(spotifyUrl.trim()), 'Spotify import')}
-            className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Link2 className="h-4 w-4" aria-hidden />}
             {busy ? 'Matching songs…' : 'Import playlist'}
@@ -107,7 +107,7 @@ export function ImportView() {
           <Button
             disabled={busy || !text.trim()}
             onClick={() => run(() => api.importText(text, order), 'Text import')}
-            className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}
             {busy ? 'Matching songs…' : 'Import list'}
@@ -144,7 +144,7 @@ export function ImportView() {
           <Button
             disabled={busy || !csv.trim()}
             onClick={() => run(() => api.importCSV(csv), 'CSV import')}
-            className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+            className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Table2 className="h-4 w-4" aria-hidden />}
             {busy ? 'Matching songs…' : 'Import CSV'}
@@ -165,7 +165,7 @@ export function ImportView() {
       {result && (
         <div className="rounded-xl border border-border/50 bg-black/30 p-5">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="h-6 w-6 text-emerald-400" aria-hidden />
+            <CheckCircle2 className="h-6 w-6 text-[#1ed760]" aria-hidden />
             <div className="flex-1">
               <p className="font-semibold">{result.name}</p>
               <p className="text-xs text-muted-foreground">
@@ -174,7 +174,7 @@ export function ImportView() {
             </div>
             <Button
               size="sm"
-              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
               onClick={() => navigate({ name: 'playlist', id: result.playlistId })}
             >
               <ListMusic className="h-4 w-4" aria-hidden /> Open playlist

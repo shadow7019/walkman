@@ -24,6 +24,7 @@ export interface ArtistSweep {
 export type SpotifySync = ArtistSweep
 export type DeepSweep = ArtistSweep
 export type FullSweep = ArtistSweep
+export type IndianRap = ArtistSweep
 
 export const api = {
   // catalog
@@ -61,9 +62,11 @@ export const api = {
   stats: (period: string) => json<ReplayStats>(`/api/stats?period=${period}`),
 
   // sync
-  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; artistCount?: number; lastSyncedAt: string | null; artistSweep?: ArtistSweep; sweptArtists?: number; spotifySync?: SpotifySync; spotifyPlaylists?: number; deepSweep?: DeepSweep; deepCrawledArtists?: number; thinArtists?: number; fullSweep?: FullSweep; fullLength?: number; previewCount?: number }>('/api/sync'),
+  syncStatus: () => json<{ logs: { id: string; source: string; scope: string; fetched: number; added: number; updated: number; syncedAt: string }[]; total: number; artistCount?: number; lastSyncedAt: string | null; artistSweep?: ArtistSweep; sweptArtists?: number; spotifySync?: SpotifySync; spotifyPlaylists?: number; deepSweep?: DeepSweep; deepCrawledArtists?: number; thinArtists?: number; indianRap?: IndianRap; indianRapArtists?: number; fullSweep?: FullSweep; fullLength?: number; previewCount?: number }>('/api/sync'),
+  // POST /api/sync may reject with { started:false, message } when another sweep
+  // is already running — added/total are only present on a completed refresh.
   runSync: () =>
-    json<{ ok: boolean; added: number; updated: number; total: number }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }),
+    json<{ ok: boolean; started?: boolean; message?: string; added?: number; updated?: number; total?: number }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }),
   expandArtists: () =>
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artists' }) }),
   syncSpotify: () =>
@@ -72,6 +75,8 @@ export const api = {
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artist-deep', artist }) }),
   deepArtists: () =>
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'deep-artists' }) }),
+  indianRap: () =>
+    json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'indian-rap' }) }),
   fullSongs: () =>
     json<{ ok: boolean; started: boolean; message: string }>('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'fullsongs' }) }),
 

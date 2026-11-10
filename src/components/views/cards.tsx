@@ -25,7 +25,7 @@ export function TrackCard({ track, list, contextTitle }: { track: Track; list: T
       <div className="relative mb-2">
         <Cover src={track.cover} alt={`${track.title} cover`} className="aspect-square w-full shadow-lg" />
         <span className={cn(
-          'absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-black shadow-xl transition-all',
+          'absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#1db954] text-black shadow-xl transition-all',
           isCurrent && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0'
         )}>
           {isCurrent && isPlaying ? <Pause className="h-4 w-4 fill-current" aria-hidden /> : <Play className="h-4 w-4 fill-current translate-x-[1px]" aria-hidden />}
@@ -51,11 +51,18 @@ export function MixCard({ title, subtitle, tracks }: { title: string; subtitle: 
       disabled={!tracks.length}
     >
       <div className="relative mb-2 grid aspect-square w-full grid-cols-2 gap-px overflow-hidden rounded-md bg-white/5 shadow-lg">
-        {covers.map((t) => (
-          <Cover key={t.id} src={t.cover} alt="" className="h-full w-full" rounded="rounded-none" />
+        {covers.map((t, i) => (
+          <Cover
+            key={t.id}
+            src={t.cover}
+            alt=""
+            // a lone cover must fill the whole tile, not half of the 2x2 grid
+            className={cn('h-full w-full', covers.length < 4 && i === 0 && covers.length !== 2 && 'col-span-2 row-span-2', covers.length === 2 && i === 0 && 'col-span-2 row-span-1')}
+            rounded="rounded-none"
+          />
         ))}
         {covers.length === 0 && <div className="col-span-2 flex items-center justify-center text-muted-foreground"><ListMusic className="h-8 w-8" aria-hidden /></div>}
-        <span className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-black opacity-0 shadow-xl transition-all group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#1db954] text-black opacity-0 shadow-xl transition-all group-hover:opacity-100">
           <Play className="h-4 w-4 fill-current" aria-hidden />
         </span>
       </div>
@@ -182,7 +189,7 @@ export function SectionHeader({ title, subtitle, action }: { title: string; subt
 export function StatTile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="rounded-xl border border-border/50 bg-black/30 p-4">
-      <div className={cn('text-2xl font-bold tabular-nums', accent && 'text-emerald-400')}>{value}</div>
+      <div className={cn('text-2xl font-bold tabular-nums', accent && 'text-[#1ed760]')}>{value}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
     </div>
   )

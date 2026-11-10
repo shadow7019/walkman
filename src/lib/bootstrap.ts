@@ -73,6 +73,10 @@ export async function ensureCatalog(): Promise<void> {
           void (await import('@/lib/catalog')).deepArtistsSync()
             .then((d) => console.log(`[walkman] periodic discography sweep: +${d.added} songs`))
             .catch((e) => console.error('[walkman] periodic discography sweep failed:', e))
+          // refresh the Desi Hip-Hop scene daily (24h resume logic inside)
+          void (await import('@/lib/catalog')).indianRapSync()
+            .then((d) => console.log(`[walkman] indian rap sync: +${d.added} songs`))
+            .catch((e) => console.error('[walkman] indian rap sync failed:', e))
         } catch (e) {
           console.error('[walkman] periodic sync failed:', e)
         }

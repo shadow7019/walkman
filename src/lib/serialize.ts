@@ -21,6 +21,7 @@ export interface TrackDTO {
   playCount: number
   favoriteCount: number
   permalink: string
+  trackNo: number
 }
 
 type DbTrack = {
@@ -28,7 +29,7 @@ type DbTrack = {
   mood: string; language: string; country: string; year: number; durationMs: number; cover: string
   source: string; sourceId: string
   hasFull: boolean; qualityTier: string; bitrateKbps: number; explicit: boolean
-  playCount: number; favoriteCount: number; permalink: string
+  playCount: number; favoriteCount: number; permalink: string; trackNo: number
 }
 
 export function trackDTO(t: DbTrack): TrackDTO {

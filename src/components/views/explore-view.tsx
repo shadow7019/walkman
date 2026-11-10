@@ -129,14 +129,14 @@ function CollectionHero({ title, subtitle, gradient, tracks, contextTitle, badge
       <div className="absolute inset-0 bg-gradient-to-t from-background/95 to-transparent" aria-hidden />
       <div className="relative flex flex-col gap-6 md:flex-row md:items-end">
         <div className="min-w-0 flex-1">
-          {badge && <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-emerald-300">{badge}</p>}
+          {badge && <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#1ed760]">{badge}</p>}
           <h1 className="text-3xl font-black tracking-tight drop-shadow-md sm:text-4xl lg:text-5xl">{title}</h1>
           {subtitle && <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>}
           <p className="mt-1 text-xs text-muted-foreground">{tracks.length} songs</p>
           <div className="mt-4 flex items-center gap-3">
             <Button
               size="sm"
-              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
               disabled={!canPlay}
               onClick={() => playQueue(tracks, 0, contextTitle)}
               aria-label={`Play ${title}`}

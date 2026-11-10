@@ -56,7 +56,7 @@ export function Sidebar() {
             className="h-8 w-8 rounded-lg shadow-lg shadow-black/50"
           />
           <span className="text-lg font-bold tracking-tight">Walkman</span>
-          <span className="ml-auto rounded-full border border-emerald-500/40 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-400">Free</span>
+          <span className="ml-auto rounded-full border border-[#1db954]/40 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#1ed760]">Free</span>
         </button>
         <nav className="flex flex-col gap-0.5" aria-label="Primary">
           {navItems.map((item) => (
@@ -133,7 +133,7 @@ export function Sidebar() {
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        {pinned && <Pin className="h-3 w-3 shrink-0 fill-current text-emerald-400" aria-hidden />}
+                        {pinned && <Pin className="h-3 w-3 shrink-0 fill-current text-[#1ed760]" aria-hidden />}
                         <span className="truncate">{p.name}</span>
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
@@ -145,7 +145,7 @@ export function Sidebar() {
                     onClick={(e) => { e.stopPropagation(); togglePin(p.id) }}
                     className={cn(
                       'mr-1 shrink-0 rounded p-1 transition-opacity',
-                      pinned ? 'text-emerald-400 opacity-100' : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'
+                      pinned ? 'text-[#1ed760] opacity-100' : 'text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100'
                     )}
                     aria-label={pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
                   >

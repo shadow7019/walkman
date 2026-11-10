@@ -73,7 +73,7 @@ function QueuePanel() {
                 setDragOver(null)
               }}
               role="listitem"
-              className={cn(dragOver === i && 'ring-1 ring-emerald-400/60 rounded-lg')}
+              className={cn(dragOver === i && 'ring-1 ring-[#1ed760]/60 rounded-lg')}
             >
               <QueueRow
                 t={t}
@@ -115,7 +115,7 @@ function QueueRow({ t, index, active, isPlaying, onPlay, onRemove, draggableHand
           {active && isPlaying && <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50"><EqBars /></div>}
         </div>
         <div className="min-w-0">
-          <div className={cn('truncate text-sm', active && 'text-emerald-400')}>{t.title}</div>
+          <div className={cn('truncate text-sm', active && 'text-[#1ed760]')}>{t.title}</div>
           <div className="truncate text-xs text-muted-foreground">{t.artist}</div>
         </div>
       </button>

@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react'
 import { usePlayer, onEngineEvent } from '@/stores/player'
 import { api } from '@/lib/client-api'
 import { applyEq, ensureAudioGraph, getRmsLevel, resumeAudioGraph } from '@/lib/audio-graph'
+import { androidPlaying, androidPaused } from '@/lib/android-bridge'
 import type { Track } from '@/types'
 
 export function useAudioEngine() {
@@ -67,7 +68,11 @@ export function useAudioEngine() {
       if (autoplay) cur.play().catch(() => {})
       startedAtRef.current = { id: track.id, at: Date.now(), reported: false }
 
-      // MediaSession (media keys + OS overlay)
+      // Android APK: keep audio alive with the screen off via the native
+      // foreground service (no-op in regular browsers)
+      androidPlaying(track.title, track.artist, track.album || 'Walkman', (track.durationMs || 0) / 1000)
+
+      // MediaSession (media keys + OS overlay + lock-screen controls)
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: track.title,
@@ -75,10 +80,14 @@ export function useAudioEngine() {
           album: track.album || 'Walkman',
           artwork: track.cover ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }] : [],
         })
-        navigator.mediaSession.setActionHandler('play', () => usePlayer.getState().playPause())
-        navigator.mediaSession.setActionHandler('pause', () => usePlayer.getState().playPause())
-        navigator.mediaSession.setActionHandler('previoustrack', () => usePlayer.getState().prev())
-        navigator.mediaSession.setActionHandler('nexttrack', () => usePlayer.getState().next())
+        const st = usePlayer.getState()
+        navigator.mediaSession.setActionHandler('play', () => st.playPause())
+        navigator.mediaSession.setActionHandler('pause', () => st.playPause())
+        navigator.mediaSession.setActionHandler('previoustrack', () => st.prev())
+        navigator.mediaSession.setActionHandler('nexttrack', () => st.next())
+        navigator.mediaSession.setActionHandler('seekbackward', (d) => st.seek(Math.max(0, usePlayer.getState().position - (d?.seekOffset ?? 10))))
+        navigator.mediaSession.setActionHandler('seekforward', (d) => st.seek(Math.min(usePlayer.getState().duration, usePlayer.getState().position + (d?.seekOffset ?? 10))))
+        navigator.mediaSession.setActionHandler('seekto', (d) => { if (d.seekTime != null) st.seek(d.seekTime) })
       }
     }
 
@@ -120,14 +129,20 @@ export function useAudioEngine() {
         const cf = s.crossfadeSec > 0 && s.isPlaying
         if (cf) crossfadeTo(e.track)
         else beginTrack(e.track, e.autoplay)
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
       } else if (e.type === 'pause') {
         active().pause()
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
+        androidPaused()
       } else if (e.type === 'resume') {
         resumeAudioGraph()
         if (!active().src) {
           const cur = s.queue[s.queueIndex]
           if (cur) beginTrack(cur, true, s.position)
         } else active().play().catch(() => {})
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+        const cur = s.queue[s.queueIndex]
+        if (cur) androidPlaying(cur.title, cur.artist, cur.album || 'Walkman', (cur.durationMs || 0) / 1000)
       } else if (e.type === 'seek') {
         if (active().src && isFinite(active().duration)) {
           active().currentTime = Math.min(e.sec, active().duration || e.sec)
@@ -144,6 +159,16 @@ export function useAudioEngine() {
       const el = active()
       if (el && el.src && !el.paused) {
         usePlayer.getState().internal.setPosition(el.currentTime, el.duration || 0)
+        // lock-screen scrubber (Android WebView / Chrome media controls)
+        if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: isFinite(el.duration) ? el.duration : 0,
+              playbackRate: el.playbackRate || 1,
+              position: Math.min(el.currentTime, isFinite(el.duration) ? el.duration : el.currentTime),
+            })
+          } catch { /* transient state mismatch — next tick retries */ }
+        }
         // report history after 30s
         const st = startedAtRef.current
         if (!st.reported && Date.now() - st.at > 30000) reportHistory(false)
@@ -242,6 +267,7 @@ export function useAudioEngine() {
       clearInterval(eqTick)
       clearInterval(silenceTick)
       a.pause(); b.pause()
+      androidPaused()
       a.removeEventListener('timeupdate', onTime)
       b.removeEventListener('timeupdate', onTime)
       a.removeEventListener('ended', onEnded)

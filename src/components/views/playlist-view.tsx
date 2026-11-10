@@ -134,7 +134,7 @@ export function PlaylistView({ id }: { id: string }) {
         <div className="absolute inset-0 bg-gradient-to-t from-background/95 to-transparent" aria-hidden />
         <div className="relative">
           {playlist.importedFrom && (
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-emerald-300">Imported from {playlist.importedFrom}</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#1ed760]">Imported from {playlist.importedFrom}</p>
           )}
           <h1 className="text-3xl font-black tracking-tight drop-shadow-md sm:text-4xl lg:text-5xl">{playlist.name}</h1>
           {playlist.description && <p className="mt-2 max-w-xl text-sm text-muted-foreground">{playlist.description}</p>}
@@ -144,7 +144,7 @@ export function PlaylistView({ id }: { id: string }) {
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button
               size="sm"
-              className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400"
+              className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]"
               disabled={!tracks.length}
               onClick={() => playQueue(tracks, 0, playlist.name)}
               aria-label={`Play ${playlist.name}`}
@@ -167,7 +167,7 @@ export function PlaylistView({ id }: { id: string }) {
             <Button
               size="sm"
               variant="outline"
-              className={cn('gap-2 border-white/20 px-3', pinned && 'text-emerald-400')}
+              className={cn('gap-2 border-white/20 px-3', pinned && 'text-[#1ed760]')}
               onClick={() => togglePin(id)}
               aria-label={pinned ? `Unpin ${playlist.name}` : `Pin ${playlist.name}`}
             >
@@ -336,7 +336,7 @@ function CollectionHeroStatic({ title, icon, gradient, count, minutes, onPlay, o
             {count} songs{minutes > 0 && ` · ${minutes} min`}
           </p>
           <div className="mt-4 flex items-center gap-3">
-            <Button size="sm" className="gap-2 bg-emerald-500 text-black hover:bg-emerald-400" disabled={disabled} onClick={onPlay} aria-label={`Play ${title}`}>
+            <Button size="sm" className="gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]" disabled={disabled} onClick={onPlay} aria-label={`Play ${title}`}>
               <Play className="h-4 w-4 fill-current" aria-hidden /> Play
             </Button>
             <Button size="sm" variant="outline" className="gap-2 border-white/20" disabled={disabled} onClick={onShuffle} aria-label={`Shuffle ${title}`}>

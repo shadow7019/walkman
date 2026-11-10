@@ -43,61 +43,63 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Walkman is a dark-first music app */
+/* Walkman is a dark-first music app — Spotify reference palette:
+   #121212 base, #181818 cards, #242424 elevated, #b3b3b3 secondary text,
+   brand green #1db954 (bright #1ed760) */
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.828 0.179 84);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: #121212;
+  --foreground: #ffffff;
+  --card: #181818;
+  --card-foreground: #ffffff;
+  --popover: #212121;
+  --popover-foreground: #ffffff;
+  --primary: #1db954;
+  --primary-foreground: #000000;
+  --secondary: #2a2a2a;
+  --secondary-foreground: #ffffff;
+  --muted: #242424;
+  --muted-foreground: #b3b3b3;
+  --accent: #242424;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.795 0.157 84);
-  --chart-1: oklch(0.828 0.179 84);
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #1ed760;
+  --chart-1: #1db954;
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.828 0.179 84);
-  --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.795 0.157 84);
+  --sidebar: #121212;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #1db954;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #1a1a1a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #1ed760;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.828 0.179 84);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: #121212;
+  --foreground: #ffffff;
+  --card: #181818;
+  --card-foreground: #ffffff;
+  --popover: #212121;
+  --popover-foreground: #ffffff;
+  --primary: #1db954;
+  --primary-foreground: #000000;
+  --secondary: #2a2a2a;
+  --secondary-foreground: #ffffff;
+  --muted: #242424;
+  --muted-foreground: #b3b3b3;
+  --accent: #242424;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.795 0.157 84);
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #1ed760;
 }
 
 @layer base {
@@ -113,7 +115,7 @@
 }
 
 ::selection {
-  background: rgb(251 191 36 / 0.35);
+  background: rgb(29 185 84 / 0.35);
 }
 
 /* ---- custom scrollbars ---- */
@@ -161,7 +163,7 @@
   background: rgb(255 255 255 / 0.15);
 }
 .player-slider[data-slot="slider"] [data-slot="slider-range"] {
-  background: #fbbf24;
+  background: #1db954;
 }
 .player-slider[data-slot="slider"] [data-slot="slider-thumb"] {
   height: 12px;
@@ -203,6 +205,38 @@
   background-clip: content-box;
 }
 
-/* emerald slider accents */
-[data-slot="slider-range"] { background: #34d399; }
+/* Spotify-green slider accents */
+[data-slot="slider-range"] { background: #1db954; }
 [data-slot="slider-thumb"] { border-color: #ffffff; background: #ffffff; }
+
+/* ---- Walkman: mobile app feel ---- */
+html {
+  /* dvh fallback for older mobile browsers */
+  height: 100%;
+}
+body {
+  height: 100%;
+  overscroll-behavior: none;           /* no pull-to-refresh / scroll chaining */
+  -webkit-tap-highlight-color: transparent;
+  text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+}
+/* app-like text selection: disable except where reading/copying matters */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+input, textarea,
+[contenteditable="true"],
+.lyrics-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+button, a, [role="button"], [role="slider"], input[type="range"] {
+  touch-action: manipulation;          /* kills 300ms double-tap zoom delay */
+}
+/* hide horizontal scrollbars on touch devices (rows swipe naturally) */
+@media (pointer: coarse) {
+  *::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}

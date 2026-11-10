@@ -90,30 +90,30 @@ export function HomeView() {
           {stats && stats.minutes > 0 && (
             <button
               onClick={() => navigate({ name: 'replay' })}
-              className="rounded-full border border-emerald-500/40 px-3 py-1 text-xs text-emerald-400 hover:bg-emerald-500/10"
+              className="rounded-full border border-[#1db954]/40 px-3 py-1 text-xs text-[#1ed760] hover:bg-[#1db954]/10"
             >
               You listened {stats.minutes.toLocaleString()} min this month — Replay
             </button>
           )}
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-3 lg:gap-3">
           {quickPicks.map((q) => (
             <button
               key={q.label}
               onClick={q.onClick}
-              className="group flex items-center gap-3 overflow-hidden rounded-lg bg-white/5 pr-4 text-left transition-colors hover:bg-white/10"
+              className="group flex items-center gap-2 overflow-hidden rounded-lg bg-white/5 pr-3 text-left transition-colors hover:bg-white/10 sm:gap-3 sm:pr-4"
             >
               {q.icon === 'heart' ? (
-                <div className={cn('flex h-16 w-16 shrink-0 items-center justify-center bg-gradient-to-br', q.gradient)}>
-                  <Heart className="h-6 w-6 fill-white text-white" aria-hidden />
+                <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center bg-gradient-to-br sm:h-16 sm:w-16', q.gradient)}>
+                  <Heart className="h-5 w-5 fill-white text-white sm:h-6 sm:w-6" aria-hidden />
                 </div>
               ) : q.covers?.length ? (
-                <Cover src={q.covers[0]} alt="" className="h-16 w-16 shrink-0" rounded="rounded-none" />
+                <Cover src={q.covers[0]} alt="" className="h-12 w-12 shrink-0 sm:h-16 sm:w-16" rounded="rounded-none" />
               ) : (
-                <div className={cn('h-16 w-16 shrink-0 bg-gradient-to-br', q.gradient)} aria-hidden />
+                <div className={cn('h-12 w-12 shrink-0 bg-gradient-to-br sm:h-16 sm:w-16', q.gradient)} aria-hidden />
               )}
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{q.label}</span>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black opacity-0 shadow-lg transition-all group-hover:opacity-100">
+              <span className="min-w-0 flex-1 truncate text-xs font-semibold sm:text-sm">{q.label}</span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1db954] text-black opacity-0 shadow-lg transition-all group-hover:opacity-100 sm:h-9 sm:w-9">
                 <Play className="h-4 w-4 fill-current" aria-hidden />
               </span>
             </button>

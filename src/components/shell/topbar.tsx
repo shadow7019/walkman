@@ -3,7 +3,7 @@
 // Top bar: brand mark (mobile), back/forward, live search with suggestions, sync indicator.
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Search, ArrowLeft, RefreshCw, X } from 'lucide-react'
+import { Search, ArrowLeft, RefreshCw, X, Settings } from 'lucide-react'
 import { useUI } from '@/stores/ui'
 import { usePlayer } from '@/stores/player'
 import { api } from '@/lib/client-api'
@@ -135,6 +135,18 @@ export function TopBar() {
 
       <div className="ml-auto flex items-center gap-2">
         <SyncIndicator />
+        {/* settings shortcut — one tap away on every screen, desktop and mobile */}
+        <button
+          onClick={() => navigate({ name: 'settings' })}
+          aria-label="Open settings"
+          title="Settings"
+          className={cn(
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 bg-black/30 text-muted-foreground transition-colors hover:text-foreground',
+            view.name === 'settings' && 'text-[#1ed760]'
+          )}
+        >
+          <Settings className="h-4 w-4" aria-hidden />
+        </button>
       </div>
     </header>
   )
@@ -160,8 +172,12 @@ function SyncIndicator() {
         toast('Syncing new songs from the industry catalog…')
         try {
           const r = await api.runSync()
-          toast(`Catalog updated: +${r.added} new songs (${r.total} total)`)
-          setTotal(r.total)
+          if (typeof r.added === 'number' && typeof r.total === 'number') {
+            toast(`Catalog updated: +${r.added} new songs (${r.total} total)`)
+            setTotal(r.total)
+          } else {
+            toast(r.message || 'A catalog sweep is already running — new songs keep landing automatically')
+          }
         } catch {
           toast('Sync failed — will retry automatically')
         } finally {
@@ -170,7 +186,7 @@ function SyncIndicator() {
       }}
       className={cn(
         'flex h-9 items-center gap-2 rounded-full border border-border/60 bg-black/30 px-3 text-xs text-muted-foreground transition-colors hover:text-foreground',
-        syncing && 'animate-pulse text-emerald-400'
+        syncing && 'animate-pulse text-[#1ed760]'
       )}
       aria-label="Sync new songs now"
       title="Auto-add new songs from the industry catalog"

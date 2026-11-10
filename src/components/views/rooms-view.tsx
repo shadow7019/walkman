@@ -257,8 +257,8 @@ export function RoomsView() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-border/50 bg-black/30 p-5">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/15">
-              <Plus className="h-5 w-5 text-emerald-400" aria-hidden />
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[#1db954]/15">
+              <Plus className="h-5 w-5 text-[#1ed760]" aria-hidden />
             </div>
             <h2 className="font-semibold">Start a room</h2>
             <p className="mt-1 text-xs text-muted-foreground">Up to 10 people. You control the shared queue.</p>
@@ -267,7 +267,7 @@ export function RoomsView() {
                 <Label htmlFor="room-name">Room name</Label>
                 <Input id="room-name" placeholder="Friday night vibes" value={roomName} onChange={(e) => setRoomName(e.target.value)} maxLength={40} />
               </div>
-              <Button onClick={createRoom} disabled={phase === 'connecting'} className="w-full gap-2 bg-emerald-500 text-black hover:bg-emerald-400">
+              <Button onClick={createRoom} disabled={phase === 'connecting'} className="w-full gap-2 bg-[#1db954] text-black hover:bg-[#1ed760]">
                 <Users className="h-4 w-4" aria-hidden /> {phase === 'connecting' ? 'Connecting…' : 'Create room'}
               </Button>
             </div>
@@ -310,7 +310,7 @@ export function RoomsView() {
       {/* room header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
+          <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#1ed760]">
             <Wifi className="h-3.5 w-3.5" aria-hidden /> Live room {isHost && '· you are the host'}
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">{room.name ?? 'Listening Room'}</h1>
@@ -318,11 +318,11 @@ export function RoomsView() {
         <div className="flex items-center gap-3">
           <button
             onClick={copyCode}
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2"
+            className="flex items-center gap-2 rounded-xl border border-[#1db954]/40 bg-[#1db954]/10 px-4 py-2"
             aria-label={`Copy room code ${room.code}`}
           >
-            <span className="font-mono text-2xl font-bold tracking-[0.25em] text-emerald-300">{room.code}</span>
-            <Copy className="h-4 w-4 text-emerald-400" aria-hidden />
+            <span className="font-mono text-2xl font-bold tracking-[0.25em] text-[#1ed760]">{room.code}</span>
+            <Copy className="h-4 w-4 text-[#1ed760]" aria-hidden />
           </button>
           <Button variant="outline" size="sm" className="gap-2" onClick={leave}>
             <LogOut className="h-4 w-4" aria-hidden /> Leave

@@ -52,3 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+# local android sdk + downloads
+/apk/android-sdk/
+/ecj.jar
+/plat34.zip

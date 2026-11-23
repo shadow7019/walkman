@@ -2,10 +2,10 @@
 # Builds the Walkman Android APK without Gradle using aapt2 + javac + d8 + apksigner.
 set -euo pipefail
 
-SDK="${ANDROID_HOME:-/home/z/android-sdk}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SDK="${ANDROID_HOME:-$HERE/android-sdk}"
 BT="$SDK/build-tools/34.0.0"
 PLATFORM="$SDK/platforms/android-34/android.jar"
-HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/build"
 KEYSTORE="$HERE/walkman.keystore"
 FINAL="$HERE/walkman.apk"
@@ -25,7 +25,7 @@ echo "[2/7] aapt2 link (manifest + resources + android.jar)"
   "$OUT/res.zip"
 
 echo "[3/7] javac compile (ecj)"
-java -jar /home/z/android-sdk/ecj.jar \
+java -jar "$SDK/ecj.jar" \
   -source 1.8 -target 1.8 \
   -bootclasspath "$PLATFORM" \
   -classpath "$PLATFORM" \
